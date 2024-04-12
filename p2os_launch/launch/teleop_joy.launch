@@ -9,6 +9,9 @@
 		<remap from="/des_vel" to="/base_controller/command" />
 	</node>
 	
-	<!-- run a joy node to control the pioneer -->
-	<node pkg="joy" type="joy_node" name="pioneer_joy_controller" />
+		<!-- run a joy node to control the pioneer
+	<node pkg="joy" type="joy_node" name="pioneer_joy_controller" /> -->
+	<node pkg="joy" type="joy_node" name="logitech_joy_controller" >
+	<rosparam command="load" file="$(find p2os_launch)/launch/logi_gamepad.yaml"/>
+	</node>
 </launch>
