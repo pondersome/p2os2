@@ -4,8 +4,8 @@
 	<arg name="SICKLMSLaser" value="0"/>
 	<arg name="P2OS_Driver" value="1"/>
 	<arg name="KeyboardTeleop" value="0"/>
-	<arg name="JoystickTeleop" value="1"/>
-	<arg name="Transform" value="0"/>
+	<arg name="JoystickTeleop" value="0"/>
+	<arg name="Transform" value="1"/>
 	<arg name="Dashboard" value="0"/>
 	<arg name="enableMotor" value="1"/>
 
