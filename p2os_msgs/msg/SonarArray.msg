@@ -1,3 +1,3 @@
-Header    header
-int32     ranges_count
+std_msgs/Header header
+int32 ranges_count
 float64[] ranges

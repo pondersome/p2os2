@@ -21,7 +21,7 @@
  */
 #ifndef P2OS_DRIVER__PACKET_HPP_
 #define P2OS_DRIVER__PACKET_HPP_
-#include <ros/ros.h>
+#include "rclcpp/rclcpp.hpp"
 
 #include <cstring>
 
@@ -35,7 +35,7 @@ class P2OSPacket
 public:
   unsigned char packet[packet_len];
   unsigned char size;
-  ros::Time timestamp;
+  rclcpp::Time timestamp;
 
   int CalcChkSum();
 

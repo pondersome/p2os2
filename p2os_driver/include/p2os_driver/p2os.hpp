@@ -24,9 +24,9 @@
 #include <pthread.h>
 #include <sys/time.h>
 
-#include <ros/ros.h>
-#include <nav_msgs/Odometry.h>
-#include <geometry_msgs/Twist.h>
+#include "rclcpp/rclcpp.hpp"
+#include <nav_msgs/msg/odometry.hpp>
+#include <geometry_msgs/msg/twist.hpp>
 #include <tf/transform_broadcaster.h>
 #include <p2os_msgs/BatteryState.h>
 #include <p2os_msgs/MotorState.h>
@@ -53,7 +53,7 @@
 typedef struct ros_p2os_data
 {
   //! Provides the position of the robot
-  nav_msgs::Odometry position;
+  nav_msgs::msg::Odometry position;
   //! Provides the battery voltage
   p2os_msgs::BatteryState batt;
   //! Provides the state of the motors (enabled or disabled)
@@ -67,7 +67,7 @@ typedef struct ros_p2os_data
   //! Analog In/Out
   p2os_msgs::AIO aio;
   //! Transformed odometry frame.
-  geometry_msgs::TransformStamped odom_trans;
+  geometry_msgs::msg::TransformStamped odom_trans;
 } ros_p2os_data_t;
 
 // this is here because we need the above typedef's before including it.
@@ -89,7 +89,7 @@ class P2OSNode
    */
 
 public:
-  explicit P2OSNode(ros::NodeHandle n);
+  explicit P2OSNode(rclcpp::Node n);
   virtual ~P2OSNode();
 
 public:
@@ -105,7 +105,7 @@ public:
   void ResetRawPositions();
   void ToggleSonarPower(unsigned char val);
   void ToggleMotorPower(unsigned char val);
-  void StandardSIPPutData(ros::Time ts);
+  void StandardSIPPutData(rclcpp::Time ts);
 
   inline double TicksToDegrees(int joint, unsigned char ticks);
   inline unsigned char DegreesToTicks(int joint, double degrees);
@@ -117,7 +117,7 @@ public:
   void SendPulse(void);
 
   void check_and_set_vel();
-  void cmdvel_cb(const geometry_msgs::TwistConstPtr &);
+  void cmdvel_cb(const geometry_msgs::msg::Twist::ConstSharedPtr &);
 
   void check_and_set_motor_state();
   void cmdmotor_state(const p2os_msgs::MotorStateConstPtr &);
@@ -132,9 +132,9 @@ public:
 
 protected:
   //! Node Handler used for publication of data.
-  ros::NodeHandle n;
+  rclcpp::Node n;
   //! Node Handler used for private data publication.
-  ros::NodeHandle nh_private;
+  rclcpp::Node nh_private;
 
   diagnostic_updater::Updater diagnostic_;
 
@@ -145,7 +145,7 @@ protected:
   ros::Subscriber cmdvel_sub_, cmdmstate_sub_, gripper_sub_, ptz_cmd_sub_;
 
   tf::TransformBroadcaster odom_broadcaster;
-  ros::Time veltime;
+  rclcpp::Time veltime;
 
   SIP * sippacket;
   std::string psos_serial_port;
@@ -193,7 +193,7 @@ protected:
 
 public:
   //! Command Velocity subscriber
-  geometry_msgs::Twist cmdvel_;
+  geometry_msgs::msg::Twist cmdvel_;
   //! Motor state publisher
   p2os_msgs::MotorState cmdmotor_state_;
   //! Gripper state publisher

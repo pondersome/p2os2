@@ -62,45 +62,45 @@ int P2OSPtz::setup()
       // case 0:
       //   do
       //   {
-      //     ROS_DEBUG("Waiting for camera to power off.");
+      //     RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Waiting for camera to power off.");
       //     err = setPower(POWER_OFF);
       //   } while (error_code_ == CAM_ERROR_BUSY);
       //   break;
       case 1:
         do {
-          ROS_DEBUG("Waiting for camera to power on.");
+          RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Waiting for camera to power on.");
           err = setPower(POWER_ON);
         } while (error_code_ == CAM_ERROR_BUSY);
         break;
       case 2:
         do {
-          ROS_DEBUG("Waiting for camera mode to set");
+          RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Waiting for camera mode to set");
           err = setControlMode();
         } while (error_code_ == CAM_ERROR_BUSY);
         break;
       case 3:
         do {
-          ROS_DEBUG("Waiting for camera to initialize");
+          RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Waiting for camera to initialize");
           err = sendInit();
         } while (error_code_ == CAM_ERROR_BUSY);
         break;
       case 4:
         do {
           for (int i = 0; i < 3; i++) {
-            ROS_DEBUG("Waiting for camera to set default tilt");
+            RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Waiting for camera to set default tilt");
             err = setDefaultTiltRange();
           }
         } while (error_code_ == CAM_ERROR_BUSY);
         break;
       case 5:
         do {
-          ROS_DEBUG("Waiting for camera to set initial pan and tilt");
+          RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Waiting for camera to set initial pan and tilt");
           err = sendAbsPanTilt(0, 0);
         } while (error_code_ == CAM_ERROR_BUSY);
         break;
       case 6:
         do {
-          ROS_DEBUG("Waiting for camera to set initial zoom");
+          RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Waiting for camera to set initial zoom");
           err = sendAbsZoom(0);
         } while (error_code_ == CAM_ERROR_BUSY);
         break;
@@ -111,27 +111,27 @@ int P2OSPtz::setup()
 
     // Check for erros after each attempt
     if (err) {
-      ROS_ERROR("Error initiliazing PTZ at stage %i", i);
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error initiliazing PTZ at stage %i", i);
       switch (error_code_) {
         case CAM_ERROR_BUSY:
-          ROS_ERROR("Error: CAM_ERROR_BUSY");
+          RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: CAM_ERROR_BUSY");
           break;
         case CAM_ERROR_PARAM:
-          ROS_ERROR("Error: CAM_ERROR_PARAM");
+          RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: CAM_ERROR_PARAM");
           break;
         case CAM_ERROR_MODE:
-          ROS_ERROR("Error: CAM_ERROR_MODE");
+          RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: CAM_ERROR_MODE");
           break;
         default:
-          ROS_ERROR("Error: Unknown error response from camera.");
+          RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: Unknown error response from camera.");
           break;
       }
       return -1;
     } else {
-      ROS_DEBUG("Passed stage %i of PTZ initialization.", i);
+      RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Passed stage %i of PTZ initialization.", i);
     }
   }
-  ROS_DEBUG("Finished initialization of the PTZ.");
+  RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Finished initialization of the PTZ.");
   return 0;
 }
 
@@ -143,7 +143,7 @@ void P2OSPtz::shutdown()
   usleep(SLEEP_TIME_USEC);
   setPower(POWER_OFF);
   usleep(SLEEP_TIME_USEC);
-  ROS_INFO("PTZ camera has been shutdown");
+  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "PTZ camera has been shutdown");
 }
 
 void P2OSPtz::callback(const p2os_msgs::PTZStateConstPtr & cmd)
@@ -214,7 +214,7 @@ int P2OSPtz::sendCommand(unsigned char * str, int len)
   p2os_->SendReceive(&request_pkt, false);
 
   if (len > MAX_COMMAND_LENGTH) {
-    ROS_ERROR("Command message is too large to send");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Command message is too large to send");
     return -1;
   }
 
@@ -250,7 +250,7 @@ int P2OSPtz::sendRequest(unsigned char * str, int len, unsigned char * reply)
   p2os_->SendReceive(&request_pkt, false);
 
   if (len > MAX_REQUEST_LENGTH) {
-    ROS_ERROR("Request message is too large to send.");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Request message is too large to send.");
     return -1;
   }
 
@@ -288,7 +288,7 @@ int P2OSPtz::receiveCommandAnswer(int asize)
     t = cb_.getFromBuf();
     if (t < 0) {
       // Buf Error!
-      ROS_ERROR("circbuf error!");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "circbuf error!");
       return -1;
     } else {
       byte = (unsigned char)t;
@@ -301,7 +301,7 @@ int P2OSPtz::receiveCommandAnswer(int asize)
   }
 
   if (len == 0) {
-    ROS_ERROR("Length is 0 on received packet.");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Length is 0 on received packet.");
     return -1;
   }
 
@@ -311,7 +311,7 @@ int P2OSPtz::receiveCommandAnswer(int asize)
     if (t < 0) {
       // there are no more bytes, so check the last byte for the footer
       if (reply[len - 1] != (unsigned char)FOOTER) {
-        ROS_ERROR("canonvcc4::receiveCommandAnswer: Discarding bad packet.");
+        RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "canonvcc4::receiveCommandAnswer: Discarding bad packet.");
         return -1;
       } else {
         break;
@@ -325,13 +325,13 @@ int P2OSPtz::receiveCommandAnswer(int asize)
 
   // Check the response
   if (len != COMMAND_RESPONSE_BYTES) {
-    ROS_ERROR("Answer does not equal command response bytes");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Answer does not equal command response bytes");
     return -1;
   }
 
   // check the header and footer
   if (reply[0] != (unsigned char)RESPONSE || reply[5] != (unsigned char)FOOTER) {
-    ROS_ERROR("Header or Footer is wrong on received packet");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Header or Footer is wrong on received packet");
     return -1;
   }
 
@@ -343,16 +343,16 @@ int P2OSPtz::receiveCommandAnswer(int asize)
 
   switch (error_code_) {
     case CAM_ERROR_BUSY:
-      ROS_ERROR("Error: CAM_ERROR_BUSY");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: CAM_ERROR_BUSY");
       break;
     case CAM_ERROR_PARAM:
-      ROS_ERROR("Error: CAM_ERROR_PARAM");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: CAM_ERROR_PARAM");
       break;
     case CAM_ERROR_MODE:
-      ROS_ERROR("Error: CAM_ERROR_MODE");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: CAM_ERROR_MODE");
       break;
     default:
-      ROS_ERROR("Error: Unknown error response from camera.");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: Unknown error response from camera.");
       break;
   }
   return -1;
@@ -385,7 +385,7 @@ int P2OSPtz::receiveRequestAnswer(unsigned char * data, int s1, int s2)
     // then return null
     t = cb_.getFromBuf();
     if (t < 0) {   // Buf Error!
-      ROS_ERROR("circbuf error!\n");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "circbuf error!\n");
       return -1;
     } else {
       byte = (unsigned char)t;
@@ -397,7 +397,7 @@ int P2OSPtz::receiveRequestAnswer(unsigned char * data, int s1, int s2)
     }
   }
   if (len == 0) {
-    ROS_ERROR("Received Request Answer has length 0");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Received Request Answer has length 0");
     return -1;
   }
   // we got the header character so keep reading bytes for MAX_RESPONSE_BYTES more
@@ -406,7 +406,7 @@ int P2OSPtz::receiveRequestAnswer(unsigned char * data, int s1, int s2)
     if (t < 0) {
       // there are no more bytes, so check the last byte for the footer
       if (reply[len - 1] != (unsigned char)FOOTER) {
-        ROS_ERROR("Last Byte was not the footer!");
+        RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Last Byte was not the footer!");
         return -1;
       } else {
         break;
@@ -419,14 +419,14 @@ int P2OSPtz::receiveRequestAnswer(unsigned char * data, int s1, int s2)
   }
   // Check the response length: pt: 14; zoom: 10
   if (len != COMMAND_RESPONSE_BYTES && len != 8 && len != 10 && len != 14) {
-    ROS_ERROR("Response Length was incorrect at %i.", len);
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Response Length was incorrect at %i.", len);
     return -1;
   }
 
   if (reply[0] != (unsigned char)RESPONSE ||
     reply[len - 1] != (unsigned char)FOOTER)
   {
-    ROS_ERROR("Header or Footer is wrong on received packet");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Header or Footer is wrong on received packet");
     return -1;
   }
 
@@ -439,16 +439,16 @@ int P2OSPtz::receiveRequestAnswer(unsigned char * data, int s1, int s2)
   }
   switch (error_code_) {
     case CAM_ERROR_BUSY:
-      ROS_ERROR("Error: CAM_ERROR_BUSY");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: CAM_ERROR_BUSY");
       break;
     case CAM_ERROR_PARAM:
-      ROS_ERROR("Error: CAM_ERROR_PARAM");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: CAM_ERROR_PARAM");
       break;
     case CAM_ERROR_MODE:
-      ROS_ERROR("Error: CAM_ERROR_MODE");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: CAM_ERROR_MODE");
       break;
     default:
-      ROS_ERROR("Error: Unknown error response from camera.");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Error: Unknown error response from camera.");
       break;
   }
   return -1;
@@ -476,21 +476,21 @@ void P2OSPtz::getPtzPacket(int s1, int s2)
   while (!cb_.gotPacket() ) {
     if (packetCount++ > PACKET_TIMEOUT) {
       // Give Up We're not getting it.
-      ROS_ERROR("Waiting for packet timed out.");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Waiting for packet timed out.");
       return;
     }
     if (cb_.size() == s1 && !secondSent) {
       if (s2 > s1) {
         // We got the first packet size, but we don't have a full packet.
         int newsize = s2 - s1;
-        ROS_ERROR("Requesting Second Packet of size %i.", newsize);
+        RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Requesting Second Packet of size %i.", newsize);
         request[2] = newsize;
         request_pkt.Build(request, 4);
         secondSent = true;
         p2os_->SendReceive(&request_pkt, false);
       } else {
         // We got the first packet but don't have a full packet, this is an error.
-        ROS_ERROR("Got reply from AUX1 But don't have a full packet.");
+        RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Got reply from AUX1 But don't have a full packet.");
         break;
       }
     }
@@ -795,7 +795,7 @@ int P2OSPtz::getAbsPanTilt(int * pan, int * tilt)
   }
 
   if (reply_len != 14) {
-    ROS_ERROR("Reply Len = %i; should equal 14", reply_len);
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Reply Len = %i; should equal 14", reply_len);
     return -1;
   }
 

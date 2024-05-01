@@ -1,35 +1,39 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.5)
 project(p2os_urdf)
-
-find_package(catkin REQUIRED COMPONENTS geometry_msgs sensor_msgs std_msgs tf urdf kdl_parser)
-
-catkin_package(
-    CATKIN_DEPENDS tf urdf geometry_msgs sensor_msgs std_msgs kdl_parser
-)
-
-include_directories(
-  ${catkin_INCLUDE_DIRS}
-)
+find_package(ament_cmake REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(urdf REQUIRED)
+find_package(kdl_parser REQUIRED)
 
 set(CMAKE_CXX_FLAGS "-std=c++11")
 
-add_executable(p2os_publisher src/publisher.cc)
-target_link_libraries(p2os_publisher ${catkin_LIBRARIES})
-
-install(TARGETS p2os_publisher
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+include_directories(
+  
 )
+
+add_executable(p2os_publisher src/publisher.cc)
 
 add_executable(p2os_publisher_3at src/publisher3at.cc)
 add_executable(p2os_publisher_3dx src/publisher3dx.cc)
-target_link_libraries(p2os_publisher_3at ${catkin_LIBRARIES})
-target_link_libraries(p2os_publisher_3dx ${catkin_LIBRARIES})
+ament_target_dependencies(p2os_publisher)
+ament_target_dependencies(p2os_publisher_3at)
+ament_target_dependencies(p2os_publisher_3dx)
+ament_export_dependencies(tf2_ros urdf geometry_msgs sensor_msgs std_msgs kdl_parser)
+ament_package()
+
+install(TARGETS p2os_publisher
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
 
 install(TARGETS p2os_publisher_3at p2os_publisher_3dx
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY 
    launch defs meshes models
-   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
- )
+   DESTINATION share/${PROJECT_NAME}
+ 
+)

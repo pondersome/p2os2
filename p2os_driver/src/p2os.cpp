@@ -23,12 +23,12 @@
 #include <fcntl.h>
 #include <string.h>
 
-#include <ros/ros.h>
+#include "rclcpp/rclcpp.hpp"
 #include <p2os_driver/p2os.hpp>
 
 #include <string>
 
-P2OSNode::P2OSNode(ros::NodeHandle nh)
+P2OSNode::P2OSNode(rclcpp::Node nh)
 : n(nh),
   batt_pub_(n.advertise<p2os_msgs::BatteryState>("battery_state", 1000),
     diagnostic_,
@@ -42,7 +42,7 @@ P2OSNode::P2OSNode(ros::NodeHandle nh)
    */
 
   // Use sonar
-  ros::NodeHandle n_private("~");
+  rclcpp::Node n_private("~");
   n_private.param(std::string("odom_frame_id"), odom_frame_id, std::string("odom"));
   n_private.param(std::string("base_link_frame_id"), base_link_frame_id, std::string("base_link"));
   n_private.param("use_sonar", use_sonar_, false);
@@ -67,7 +67,7 @@ P2OSNode::P2OSNode(ros::NodeHandle nh)
   // !!! port !!!
   std::string def = DEFAULT_P2OS_PORT;
   n_private.param("port", psos_serial_port, def);
-  ROS_INFO("using serial port: [%s]", psos_serial_port.c_str());
+  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "using serial port: [%s]", psos_serial_port.c_str());
   n_private.param("use_tcp", psos_use_tcp, false);
   std::string host = DEFAULT_P2OS_TCP_REMOTE_HOST;
   n_private.param("tcp_remote_host", psos_tcp_host, host);
@@ -101,7 +101,7 @@ P2OSNode::P2OSNode(ros::NodeHandle nh)
   desired_freq = 10;
 
   // advertise services
-  pose_pub_ = n.advertise<nav_msgs::Odometry>("pose", 1000);
+  pose_pub_ = n.advertise<nav_msgs::msg::Odometry>("pose", 1000);
   // advertise topics
   mstate_pub_ = n.advertise<p2os_msgs::MotorState>("motor_state", 1000);
   grip_state_pub_ = n.advertise<p2os_msgs::GripperState>("gripper_state", 1000);
@@ -118,7 +118,7 @@ P2OSNode::P2OSNode(ros::NodeHandle nh)
       this);
   ptz_cmd_sub_ = n.subscribe("ptz_control", 1, &P2OSPtz::callback, &ptz_);
 
-  veltime = ros::Time::now();
+  veltime = rclcpp::Time::now();
 
   // add diagnostic functions
   diagnostic_.add("Motor Stall", this, &P2OSNode::check_stall);
@@ -190,24 +190,24 @@ void P2OSNode::check_and_set_gripper_state()
   SendReceive(&lift_packet, false);
 }
 
-void P2OSNode::cmdvel_cb(const geometry_msgs::TwistConstPtr & msg)
+void P2OSNode::cmdvel_cb(const geometry_msgs::msg::Twist::ConstSharedPtr & msg)
 {
   if (fabs(msg->linear.x - cmdvel_.linear.x) > 0.01 ||
     fabs(msg->angular.z - cmdvel_.angular.z) > 0.01)
   {
-    veltime = ros::Time::now();
-    ROS_DEBUG("new speed: [%0.2f,%0.2f](%0.3f)", msg->linear.x * 1e3, msg->angular.z,
+    veltime = rclcpp::Time::now();
+    RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "new speed: [%0.2f,%0.2f](%0.3f)", msg->linear.x * 1e3, msg->angular.z,
       veltime.toSec());
     vel_dirty = true;
     cmdvel_ = *msg;
   } else {
-    ros::Duration veldur = ros::Time::now() - veltime;
+    rclcpp::Duration veldur = rclcpp::Time::now() - veltime;
     if (veldur.toSec() > 2.0 &&
       ((fabs(cmdvel_.linear.x) > 0.01) || (fabs(cmdvel_.angular.z) > 0.01)))
     {
-      ROS_DEBUG("maintaining old speed: %0.3f|%0.3f", veltime.toSec(), ros::Time::now().toSec());
+      RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "maintaining old speed: %0.3f|%0.3f", veltime.toSec(), rclcpp::Time::now().toSec());
       vel_dirty = true;
-      veltime = ros::Time::now();
+      veltime = rclcpp::Time::now();
     }
   }
 }
@@ -216,7 +216,7 @@ void P2OSNode::check_and_set_vel()
 {
   if (!vel_dirty) {return;}
 
-  ROS_DEBUG("setting vel: [%0.2f,%0.2f]", cmdvel_.linear.x, cmdvel_.angular.z);
+  RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "setting vel: [%0.2f,%0.2f]", cmdvel_.linear.x, cmdvel_.angular.z);
   vel_dirty = false;
 
   uint16_t absSpeedDemand, absturnRateDemand;
@@ -236,7 +236,7 @@ void P2OSNode::check_and_set_vel()
     motorcommand[2] = absSpeedDemand & 0x00FF;
     motorcommand[3] = (absSpeedDemand & 0xFF00) >> 8;
   } else {
-    ROS_WARN("speed demand thresholded! (true: %u, max: %u)", absSpeedDemand, motor_max_speed);
+    RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"), "speed demand thresholded! (true: %u, max: %u)", absSpeedDemand, motor_max_speed);
     motorcommand[2] = motor_max_speed & 0x00FF;
     motorcommand[3] = (motor_max_speed & 0xFF00) >> 8;
   }
@@ -253,7 +253,7 @@ void P2OSNode::check_and_set_vel()
     motorcommand[2] = absturnRateDemand & 0x00FF;
     motorcommand[3] = (absturnRateDemand & 0xFF00) >> 8;
   } else {
-    ROS_WARN("Turn rate demand threshholded!");
+    RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"), "Turn rate demand threshholded!");
     motorcommand[2] = this->motor_max_turnspeed & 0x00FF;
     motorcommand[3] = (this->motor_max_turnspeed & 0xFF00) >> 8;
   }
@@ -299,17 +299,17 @@ int P2OSNode::Setup()
 
   // use serial port
 
-  ROS_INFO("P2OS connection opening serial port %s...", psos_serial_port.c_str());
+  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "P2OS connection opening serial port %s...", psos_serial_port.c_str());
 
   if ((this->psos_fd = open(this->psos_serial_port.c_str(),
     O_RDWR | O_SYNC | O_NONBLOCK, S_IRUSR | S_IWUSR)) < 0)
   {
-    ROS_ERROR("P2OS::Setup():open():");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():open():");
     return 1;
   }
 
   if (tcgetattr(this->psos_fd, &term) < 0) {
-    ROS_ERROR("P2OS::Setup():tcgetattr():");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():tcgetattr():");
     close(this->psos_fd);
     this->psos_fd = -1;
     return 1;
@@ -320,21 +320,21 @@ int P2OSNode::Setup()
   cfsetospeed(&term, bauds[currbaud]);
 
   if (tcsetattr(this->psos_fd, TCSAFLUSH, &term) < 0) {
-    ROS_ERROR("P2OS::Setup():tcsetattr():");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():tcsetattr():");
     close(this->psos_fd);
     this->psos_fd = -1;
     return 1;
   }
 
   if (tcflush(this->psos_fd, TCIOFLUSH) < 0) {
-    ROS_ERROR("P2OS::Setup():tcflush():");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():tcflush():");
     close(this->psos_fd);
     this->psos_fd = -1;
     return 1;
   }
 
   if ((flags = fcntl(this->psos_fd, F_GETFL)) < 0) {
-    ROS_ERROR("P2OS::Setup():fcntl()");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():fcntl()");
     close(this->psos_fd);
     this->psos_fd = -1;
     return 1;
@@ -351,9 +351,9 @@ int P2OSNode::Setup()
         usleep(P2OS_CYCLETIME_USEC);
         break;
       case AFTER_FIRST_SYNC:
-        ROS_INFO("turning off NONBLOCK mode...");
+        RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "turning off NONBLOCK mode...");
         if (fcntl(this->psos_fd, F_SETFL, flags ^ O_NONBLOCK) < 0) {
-          ROS_ERROR("P2OS::Setup():fcntl()");
+          RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():fcntl()");
           close(this->psos_fd);
           this->psos_fd = -1;
           return 1;
@@ -368,7 +368,7 @@ int P2OSNode::Setup()
         packet.Send(this->psos_fd);
         break;
       default:
-        ROS_WARN("P2OS::Setup():shouldn't be here...");
+        RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():shouldn't be here...");
         break;
     }
     usleep(P2OS_CYCLETIME_USEC);
@@ -384,14 +384,14 @@ int P2OSNode::Setup()
           cfsetispeed(&term, bauds[currbaud]);
           cfsetospeed(&term, bauds[currbaud]);
           if (tcsetattr(this->psos_fd, TCSAFLUSH, &term) < 0) {
-            ROS_ERROR("P2OS::Setup():tcsetattr():");
+            RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():tcsetattr():");
             close(this->psos_fd);
             this->psos_fd = -1;
             return 1;
           }
 
           if (tcflush(this->psos_fd, TCIOFLUSH) < 0) {
-            ROS_ERROR("P2OS::Setup():tcflush():");
+            RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():tcflush():");
             close(this->psos_fd);
             this->psos_fd = -1;
             return 1;
@@ -406,22 +406,22 @@ int P2OSNode::Setup()
     }
     switch (receivedpacket.packet[3]) {
       case SYNC0:
-        ROS_INFO("SYNC0");
+        RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "SYNC0");
         psos_state = AFTER_FIRST_SYNC;
         break;
       case SYNC1:
-        ROS_INFO("SYNC1");
+        RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "SYNC1");
         psos_state = AFTER_SECOND_SYNC;
         break;
       case SYNC2:
-        ROS_INFO("SYNC2");
+        RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "SYNC2");
         psos_state = READY;
         break;
       default:
         // maybe P2OS is still running from last time.  let's try to CLOSE
         // and reconnect
         if (!sent_close) {
-          ROS_DEBUG("sending CLOSE");
+          RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "sending CLOSE");
           command = CLOSE;
           packet.Build(&command, 1);
           packet.Send(this->psos_fd);
@@ -436,7 +436,7 @@ int P2OSNode::Setup()
   }
   if (psos_state != READY) {
     if (this->psos_use_tcp) {
-      ROS_INFO("Couldn't synchronize with P2OS.\n"
+      RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "Couldn't synchronize with P2OS.\n"
         "  Most likely because the robot is not connected %s %s",
         this->psos_use_tcp ? "to the ethernet-serial bridge device " : "to the serial port",
         this->psos_use_tcp ? this->psos_tcp_host.c_str() : this->psos_serial_port.c_str());
@@ -465,7 +465,7 @@ int P2OSNode::Setup()
   packet.Send(this->psos_fd);
   usleep(P2OS_CYCLETIME_USEC);
 
-  ROS_INFO("Done.\n   Connected to %s, a %s %s", name, type, subtype);
+  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "Done.\n   Connected to %s, a %s %s", name, type, subtype);
 
   // now, based on robot type, find the right set of parameters
   for (i = 0; i < PLAYER_NUM_ROBOT_TYPES; i++) {
@@ -477,7 +477,7 @@ int P2OSNode::Setup()
     }
   }
   if (i == PLAYER_NUM_ROBOT_TYPES) {
-    ROS_WARN("P2OS: Warning: couldn't find parameters for this robot; "
+    RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"), "P2OS: Warning: couldn't find parameters for this robot; "
       "using defaults");
     param_idx = 0;
   }
@@ -595,10 +595,10 @@ int P2OSNode::Setup()
   // 3 = stall on either bumper contact
   if (this->bumpstall >= 0) {
     if (this->bumpstall > 3) {
-      ROS_INFO("ignoring bumpstall value %d; should be 0, 1, 2, or 3",
+      RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "ignoring bumpstall value %d; should be 0, 1, 2, or 3",
         this->bumpstall);
     } else {
-      ROS_INFO("setting bumpstall to %d", this->bumpstall);
+      RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "setting bumpstall to %d", this->bumpstall);
       P2OSPacket bumpstall_packet;
       unsigned char bumpstall_command[4];
       bumpstall_command[0] = BUMP_STALL;
@@ -613,7 +613,7 @@ int P2OSNode::Setup()
   // Turn on the sonar
   if (use_sonar_) {
     this->ToggleSonarPower(1);
-    ROS_DEBUG("Sonar array powered on.");
+    RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Sonar array powered on.");
   }
   ptz_.setup();
 
@@ -647,7 +647,7 @@ int P2OSNode::Shutdown()
 
   close(this->psos_fd);
   this->psos_fd = -1;
-  ROS_INFO("P2OS has been shutdown");
+  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "P2OS has been shutdown");
   delete this->sippacket;
   this->sippacket = NULL;
 
@@ -656,7 +656,7 @@ int P2OSNode::Shutdown()
 
 
 void
-P2OSNode::StandardSIPPutData(ros::Time ts)
+P2OSNode::StandardSIPPutData(rclcpp::Time ts)
 {
   p2os_data.position.header.stamp = ts;
   pose_pub_.publish(p2os_data.position);
@@ -697,7 +697,7 @@ int P2OSNode::SendReceive(P2OSPacket * pkt, bool publish_data)
     /* receive a packet */
     pthread_testcancel();
     if (packet.Receive(this->psos_fd)) {
-      ROS_ERROR("RunPsosThread(): Receive errored");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "RunPsosThread(): Receive errored");
       pthread_exit(NULL);
     }
 
@@ -721,7 +721,7 @@ int P2OSNode::SendReceive(P2OSPacket * pkt, bool publish_data)
       if (ptz_.isOn()) {
         int len = packet.packet[2] - 3;
         if (ptz_.cb_.gotPacket()) {
-          ROS_ERROR("PTZ got a message, but alread has the complete packet.");
+          RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "PTZ got a message, but alread has the complete packet.");
         } else {
           for (int i = 4; i < 4 + len; ++i) {
             ptz_.cb_.putOnBuf(packet.packet[i]);
@@ -729,7 +729,7 @@ int P2OSNode::SendReceive(P2OSPacket * pkt, bool publish_data)
         }
       }
     } else {
-      ROS_ERROR("Received other packet!");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Received other packet!");
       packet.PrintHex();
     }
   }
@@ -746,10 +746,10 @@ void P2OSNode::check_voltage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   double voltage = sippacket->battery / 10.0;
   if (voltage < 11.0) {
-    stat.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "battery voltage critically low");
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "battery voltage critically low");
   } else if (voltage < 11.75) {
-    stat.summary(diagnostic_msgs::DiagnosticStatus::WARN, "battery voltage getting low");
-  } else {stat.summary(diagnostic_msgs::DiagnosticStatus::OK, "battery voltage OK");}
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "battery voltage getting low");
+  } else {stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "battery voltage OK");}
 
   stat.add("voltage", voltage);
 }
@@ -757,9 +757,9 @@ void P2OSNode::check_voltage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 void P2OSNode::check_stall(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   if (sippacket->lwstall || sippacket->rwstall) {
-    stat.summary(diagnostic_msgs::DiagnosticStatus::ERROR,
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR,
       "wheel stalled");
-  } else {stat.summary(diagnostic_msgs::DiagnosticStatus::OK, "no wheel stall");}
+  } else {stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "no wheel stall");}
 
   stat.add("left wheel stall", sippacket->lwstall);
   stat.add("right wheel stall", sippacket->rwstall);
@@ -779,7 +779,7 @@ void P2OSNode::ResetRawPositions()
     p2oscommand[1] = ARGINT;
     pkt.Build(p2oscommand, 2);
     this->SendReceive(&pkt, false);
-    ROS_INFO("resetting raw positions");
+    RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "resetting raw positions");
   }
 }
 
@@ -806,7 +806,7 @@ void P2OSNode::ToggleMotorPower(unsigned char val)
 {
   unsigned char command[4];
   P2OSPacket packet;
-  ROS_INFO("motor state: %d\n", p2os_data.motors.state);
+  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "motor state: %d\n", p2os_data.motors.state);
   p2os_data.motors.state = static_cast<int>(val);
   command[0] = ENABLE;
   command[1] = ARGINT;

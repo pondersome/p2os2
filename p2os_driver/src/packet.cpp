@@ -26,27 +26,27 @@
 #include <p2os_driver/packet.hpp>
 #include <unistd.h>
 #include <stdlib.h>
-#include <ros/ros.h>
+#include "rclcpp/rclcpp.hpp"
 
 void P2OSPacket::Print()
 {
   if (packet) {
-    ROS_INFO("\"");
+    RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "\"");
     for (int i = 0; i < size; i++) {
-      ROS_INFO("%u ", packet[i]);
+      RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "%u ", packet[i]);
     }
-    ROS_INFO("\"");
+    RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "\"");
   }
 }
 
 void P2OSPacket::PrintHex()
 {
   if (packet) {
-    ROS_INFO("\"");
+    RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "\"");
     for (int i = 0; i < size; i++) {
-      ROS_INFO("0x%.2x ", packet[i]);
+      RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "0x%.2x ", packet[i]);
     }
-    ROS_INFO("\"");
+    RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "\"");
   }
 }
 
@@ -90,7 +90,7 @@ int P2OSPacket::Receive(int fd)
       cnt = 0;
       while (cnt != 1) {
         if ((cnt += read(fd, &prefix[2], 1)) < 0) {
-          ROS_ERROR(
+          RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), 
             "Error reading packet.hppeader from robot connection: P2OSPacket():Receive():read():");
           return 1;
         }
@@ -100,7 +100,7 @@ int P2OSPacket::Receive(int fd)
         break;
       }
 
-      timestamp = ros::Time::now();
+      timestamp = rclcpp::Time::now();
 
       // GlobalTime->GetTimeDouble(&timestamp);
 
@@ -108,7 +108,7 @@ int P2OSPacket::Receive(int fd)
       prefix[1] = prefix[2];
       // skipped++;
     }
-    // if (skipped>3) ROS_INFO("Skipped %d bytes\n", skipped);
+    // if (skipped>3) RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "Skipped %d bytes\n", skipped);
 
     size = prefix[2] + 3;
     memcpy(packet, prefix, 3);
@@ -116,7 +116,7 @@ int P2OSPacket::Receive(int fd)
     cnt = 0;
     while (cnt != prefix[2]) {
       if ((cnt += read(fd, &packet[3 + cnt], prefix[2] - cnt)) < 0) {
-        ROS_ERROR(
+        RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), 
           "Error reading packet body from robot connection: P2OSPacket():Receive():read():");
         return 1;
       }
@@ -136,7 +136,7 @@ int P2OSPacket::Build(unsigned char * data, unsigned char datasize)
   packet[1] = 0xFB;
 
   if (size > 198) {
-    ROS_ERROR("Packet to P2OS can't be larger than 200 bytes");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Packet to P2OS can't be larger than 200 bytes");
     return 1;
   }
   packet[2] = datasize + 2;
@@ -148,7 +148,7 @@ int P2OSPacket::Build(unsigned char * data, unsigned char datasize)
   packet[3 + datasize + 1] = chksum & 0xFF;
 
   if (!Check()) {
-    ROS_ERROR("DAMN");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "DAMN");
     return 1;
   }
   return 0;
@@ -160,7 +160,7 @@ int P2OSPacket::Send(int fd)
 
   while (cnt != size) {
     if ((cnt += write(fd, packet, size)) < 0) {
-      ROS_ERROR("Send");
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Send");
       return 1;
     }
   }

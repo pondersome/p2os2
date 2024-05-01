@@ -19,9 +19,9 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <ros/ros.h>
-#include <geometry_msgs/Pose.h>
-#include <geometry_msgs/PoseStamped.h>
+#include "rclcpp/rclcpp.hpp"
+#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <p2os_driver/p2os.hpp>
 #include <p2os_msgs/MotorState.h>
 #include <tf/transform_datatypes.h>
@@ -30,30 +30,30 @@
 
 int main(int argc, char ** argv)
 {
-  ros::init(argc, argv, "p2os");
-  ros::NodeHandle n;
+  rclcpp::init(argc, argv);
+  auto n = rclcpp::Node::make_shared("p2os");
 
   P2OSNode * p = new P2OSNode(n);
 
   if (p->Setup()) {
-    ROS_ERROR("p2os setup failed...");
+    RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "p2os setup failed...");
     return -1;
   }
 
   p->ResetRawPositions();
 
-  ros::Time lastTime;
+  rclcpp::Time lastTime;
 
-  while (ros::ok()) {
+  while (rclcpp::ok()) {
     p->check_and_set_vel();
     p->check_and_set_motor_state();
     p->check_and_set_gripper_state();
 
     if (p->get_pulse() > 0) {
-      ros::Time currentTime = ros::Time::now();
-      ros::Duration pulseInterval = currentTime - lastTime;
+      rclcpp::Time currentTime = rclcpp::Time::now();
+      rclcpp::Duration pulseInterval = currentTime - lastTime;
       if (pulseInterval.toSec() > p->get_pulse()) {
-        ROS_DEBUG("sending pulse");
+        RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "sending pulse");
         p->SendPulse();
         lastTime = currentTime;
       }
@@ -66,14 +66,14 @@ int main(int argc, char ** argv)
     // is no data waiting this will sit around waiting until one comes
     p->SendReceive(NULL, true);
     p->updateDiagnostics();
-    ros::spinOnce();
+    rclcpp::spin_some(node);
   }
 
   if (!p->Shutdown()) {
-    ROS_WARN("p2os shutdown failed... your robot might be heading for the wall?");
+    RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"), "p2os shutdown failed... your robot might be heading for the wall?");
   }
   delete p;
 
-  ROS_INFO("Quitting... ");
+  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "Quitting... ");
   return 0;
 }

@@ -1,3 +1,5 @@
+p2os2 - updating P2OS for ROS2
+
 p2os: 
 
 P2OS driver for the Pioneer robots. This driver was originally written for Player/Stage by Brian Gerkey.

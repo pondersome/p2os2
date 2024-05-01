@@ -23,15 +23,18 @@
   <author>ActivMedia Robotics LLC</author>
   <author>MobileRobots Inc.</author>
 
-  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>urdf</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>tf</depend>
   <depend>kdl_parser</depend>
+  <depend>tf2_ros</depend>
 
   <exec_depend>p2os_msgs</exec_depend>
   <exec_depend>p2os_driver</exec_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
 </package>
