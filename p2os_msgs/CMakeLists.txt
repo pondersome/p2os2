@@ -4,7 +4,7 @@ project(p2os_msgs)
 find_package(rosidl_default_generators REQUIRED)
 find_package(ament_cmake REQUIRED)
 find_package(std_msgs REQUIRED)
-set(CMAKE_CXX_STANDARD 1 4)
+set(CMAKE_CXX_STANDARD 14)
 
 rosidl_generate_interfaces(
     ${PROJECT_NAME}
@@ -19,7 +19,9 @@ rosidl_generate_interfaces(
         msg/PTZState.msg
         msg/GripperState.msg
         msg/BatteryState.msg
-    DEPENDENCIES
+    DEPENDENCIES std_msgs
 )
+
+ament_export_dependencies(rosidl_default_runtime)
 
 ament_package()

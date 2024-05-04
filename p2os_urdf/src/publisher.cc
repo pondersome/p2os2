@@ -33,59 +33,53 @@
  */
 
 #include <string>
-#include <ros/ros.h>
-#include <sensor_msgs/JointState.h>
-#include <tf/transform_broadcaster.h>
+#include <memory>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 #include <kdl_parser/kdl_parser.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
-int main( int argc, char* argv[] )
+class StatePublisher : public rclcpp::Node
 {
-  	ros::init(argc, argv, "state_publisher" );
-  	ros::NodeHandle n;
-
-  	ros::Publisher joint_state_publisher = n.advertise<sensor_msgs::JointState>("joint_states",1000);
-
- 	tf::TransformBroadcaster broadcaster;
-    ros::Rate loop_rate(30);
-
-    // message declarations
-    geometry_msgs::TransformStamped odom_trans;
-    sensor_msgs::JointState joint_state;
-    //odom_trans.header.frame_id = "base_link";
-    //odom_trans.child_frame_id = "";
-
-  while (ros::ok())
+public:
+  StatePublisher() : Node("state_publisher")
   {
-  	joint_state.header.stamp = ros::Time::now();
-  	joint_state.name.resize(6); //Pioneer has 6 joint state definitions. 
-  	joint_state.position.resize(6);
+    joint_state_publisher = this->create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
+    timer_ = this->create_wall_timer(33ms, std::bind(&StatePublisher::update, this));
+  }
 
-  	joint_state.name[0] = "base_top_joint";
-  	joint_state.position[0] = 0;
+private:
+  void update()
+  {
+    auto joint_state = sensor_msgs::msg::JointState{};
+    joint_state.header.stamp = this->get_clock()->now();
+    joint_state.name.resize(4); // Assume 4 joints as before
+    joint_state.position.resize(4);
 
-  	joint_state.name[1] = "base_swivel_joint";
-  	joint_state.position[1] = 0;
+    joint_state.name[0] = "p3at_back_right_wheel_joint";
+    joint_state.position[0] = 0;
 
-  	joint_state.name[2] = "swivel_hubcap_joint";
-  	joint_state.position[2] = 0;
+    joint_state.name[1] = "p3at_back_left_wheel_joint";
+    joint_state.position[1] = 0;
 
-  	joint_state.name[3] = "center_wheel_joint";
-  	joint_state.position[3] = 0; 
+    joint_state.name[2] = "p3at_front_left_wheel_joint";
+    joint_state.position[2] = 0;
 
-  	joint_state.name[4] = "base_front_joint";
-  	joint_state.position[4] = 0;
+    joint_state.name[3] = "p3at_front_right_wheel_joint";
+    joint_state.position[3] = 0;
 
-  	joint_state.name[5] = "base_back_joint";
-  	joint_state.position[5] = 0;
+    joint_state_publisher->publish(joint_state);
+  }
 
-    //odom_trans.header.stamp = ros::Time::now();
-  	//send the joint state information
-  	joint_state_publisher.publish(joint_state);
-    //broadcaster.sendTransform(odom_trans);
+  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_publisher;
+};
 
-  	//adjust loop each iteration.
-  	loop_rate.sleep();
-  }//the things ros will do
-
-  return 0; 
-}//end main
+int main(int argc, char* argv[])
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<StatePublisher>());
+  rclcpp::shutdown();
+  return 0;
+}

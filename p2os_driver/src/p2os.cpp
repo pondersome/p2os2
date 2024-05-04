@@ -23,8 +23,8 @@
 #include <fcntl.h>
 #include <string.h>
 
-#include "rclcpp/rclcpp.hpp"
-#include <p2os_driver/p2os.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include "p2os_driver/p2os.hpp"
 
 #include <string>
 

@@ -24,7 +24,7 @@
 #ifndef P2OS_DRIVER__P2OS_PTZ_HPP_
 #define P2OS_DRIVER__P2OS_PTZ_HPP_
 
-#include <p2os_msgs/PTZState.h>
+#include <p2os_msgs/msg/ptz_state.h>
 #include <p2os_driver/packet.hpp>
 #include <p2os_driver/robot_params.hpp>
 

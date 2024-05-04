@@ -31,50 +31,57 @@
  *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-
 #include <string>
-#include <ros/ros.h>
-#include <sensor_msgs/JointState.h>
-#include <tf/transform_broadcaster.h>
+#include <memory>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 #include <kdl_parser/kdl_parser.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
-int main(int argc, char** argv)
+class StatePublisher3DX : public rclcpp::Node
 {
-	ros::init(argc, argv, "state_publisher");
-	ros::NodeHandle n;
+public:
+  StatePublisher3DX() : Node("state_publisher")
+  {
+    joint_state_publisher = this->create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
+    timer_ = this->create_wall_timer(10ms, std::bind(&StatePublisher3DX::update, this)); // Setting 100 Hz
+  }
 
-	ros::Publisher joint_state_publisher = n.advertise<sensor_msgs::JointState>("joint_states",1000);
-	ros::Rate loop_rate(100);
+private:
+  void update()
+  {
+    auto joint_state = sensor_msgs::msg::JointState{};
+    joint_state.header.stamp = this->get_clock()->now();
+    joint_state.name.resize(5); // Adjusted to 5 joints
+    joint_state.position.resize(5);
 
-	// message declarations
-	sensor_msgs::JointState joint_state;
+    joint_state.name[0] = "p3dx_back_right_wheel_joint";
+    joint_state.position[0] = 0;
 
-	while (ros::ok())
-	{
-		joint_state.header.stamp = ros::Time::now();
-		joint_state.name.resize(5); //Pioneer has 4 joint state definitions.
-		joint_state.position.resize(5);
+    joint_state.name[1] = "p3dx_back_left_wheel_joint";
+    joint_state.position[1] = 0;
 
-		joint_state.name[0] = "p3dx_back_right_wheel_joint";
-		joint_state.position[0] = 0;
+    joint_state.name[2] = "p3dx_front_left_wheel_joint";
+    joint_state.position[2] = 0;
 
-		joint_state.name[1] = "p3dx_back_left_wheel_joint";
-		joint_state.position[1] = 0;
+    joint_state.name[3] = "p3dx_front_right_wheel_joint";
+    joint_state.position[3] = 0;
 
-		joint_state.name[2] = "p3dx_front_left_wheel_joint";
-		joint_state.position[2] = 0;
+    joint_state.name[4] = "p3dx_base_swivel_joint";
+    joint_state.position[4] = 0;
 
-		joint_state.name[3] = "p3dx_front_right_wheel_joint";
-		joint_state.position[3] = 0;
+    joint_state_publisher->publish(joint_state);
+  }
 
-		joint_state.name[4] = "p3dx_base_swivel_joint";
-		joint_state.position[4] = 0;
-		//send the joint state information
-		joint_state_publisher.publish(joint_state);
+  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_publisher;
+};
 
-		//adjust loop each iteration.
-		loop_rate.sleep();
-	}//loop while ROS is functioning.
-
- 	return 0;
-}//end main
+int main(int argc, char* argv[])
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<StatePublisher3DX>());
+  rclcpp::shutdown();
+  return 0;
+}

@@ -27,13 +27,14 @@
 #include "rclcpp/rclcpp.hpp"
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/twist.hpp>
-#include <tf/transform_broadcaster.h>
-#include <p2os_msgs/BatteryState.h>
-#include <p2os_msgs/MotorState.h>
-#include <p2os_msgs/GripperState.h>
-#include <p2os_msgs/SonarArray.h>
-#include <p2os_msgs/DIO.h>
-#include <p2os_msgs/AIO.h>
+#include <tf2_ros/transform_broadcaster.h>
+
+#include <p2os_msgs/msg/motor_state.h>
+#include <p2os_msgs/msg/gripper_state.h>
+#include <p2os_msgs/msg/sonar_array.h>
+#include <p2os_msgs/msg/dio.h>
+#include <p2os_msgs/msg/aio.h>
+#include <p2os_msgs/msg/battery_state.h>
 
 #include <diagnostic_updater/publisher.h>
 #include <diagnostic_updater/diagnostic_updater.h>
@@ -131,21 +132,21 @@ public:
   void check_stall(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 protected:
+  //todo remove after conversion - 6 lines
   //! Node Handler used for publication of data.
-  rclcpp::Node n;
+  //rclcpp::Node n;
   //! Node Handler used for private data publication.
-  rclcpp::Node nh_private;
-
-  diagnostic_updater::Updater diagnostic_;
-
-  diagnostic_updater::DiagnosedPublisher<p2os_msgs::BatteryState> batt_pub_;
+  //rclcpp::Node nh_private;
+  //diagnostic_updater::Updater diagnostic_;
+  //diagnostic_updater::DiagnosedPublisher<p2os_msgs::BatteryState> batt_pub_;
+  
   ros::Publisher mstate_pub_, grip_state_pub_,
     ptz_state_pub_, sonar_pub_, aio_pub_, dio_pub_;
   ros::Publisher pose_pub_;
   ros::Subscriber cmdvel_sub_, cmdmstate_sub_, gripper_sub_, ptz_cmd_sub_;
 
-  tf::TransformBroadcaster odom_broadcaster;
-  rclcpp::Time veltime;
+  tf2_ros::TransformBroadcaster odom_broadcaster;
+  //rclcpp::Time veltime; //todo remove after conversion
 
   SIP * sippacket;
   std::string psos_serial_port;

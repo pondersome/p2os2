@@ -28,8 +28,9 @@
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>tf2_ros</depend>
+  <depend>rclcpp</depend>
 
-  <exec_depend>message_runtime</exec_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
   <export>
     <build_type>ament_cmake</build_type>
   </export>
