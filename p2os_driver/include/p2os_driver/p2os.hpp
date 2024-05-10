@@ -28,16 +28,15 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <tf2_ros/transform_broadcaster.h>
+#include <p2os_msgs/msg/motor_state.hpp>
+#include <p2os_msgs/msg/gripper_state.hpp>
+#include <p2os_msgs/msg/sonar_array.hpp>
+#include <p2os_msgs/msg/dio.hpp>
+#include <p2os_msgs/msg/aio.hpp>
+#include <p2os_msgs/msg/battery_state.hpp>
 
-#include <p2os_msgs/msg/motor_state.h>
-#include <p2os_msgs/msg/gripper_state.h>
-#include <p2os_msgs/msg/sonar_array.h>
-#include <p2os_msgs/msg/dio.h>
-#include <p2os_msgs/msg/aio.h>
-#include <p2os_msgs/msg/battery_state.h>
-
-#include <diagnostic_updater/publisher.h>
-#include <diagnostic_updater/diagnostic_updater.h>
+//#include <diagnostic_updater/publisher.h>
+//#include <diagnostic_updater/diagnostic_updater.h>
 
 #include <p2os_driver/packet.hpp>
 #include <p2os_driver/robot_params.hpp>
@@ -56,17 +55,18 @@ typedef struct ros_p2os_data
   //! Provides the position of the robot
   nav_msgs::msg::Odometry position;
   //! Provides the battery voltage
-  p2os_msgs::BatteryState batt;
+  p2os_msgs::msg::BatteryState batt;
+  //p2os_msgs::msg::BatteryState batt;
   //! Provides the state of the motors (enabled or disabled)
-  p2os_msgs::MotorState motors;
+  p2os_msgs::msg::MotorState motors;
   //! Provides the state of the gripper
-  p2os_msgs::GripperState gripper;
+  p2os_msgs::msg::GripperState gripper;
   //! Container for sonar data
-  p2os_msgs::SonarArray sonar;
+  p2os_msgs::msg::SonarArray sonar;
   //! Digital In/Out
-  p2os_msgs::DIO dio;
+  p2os_msgs::msg::DIO dio;
   //! Analog In/Out
-  p2os_msgs::AIO aio;
+  p2os_msgs::msg::AIO aio;
   //! Transformed odometry frame.
   geometry_msgs::msg::TransformStamped odom_trans;
 } ros_p2os_data_t;
@@ -81,7 +81,7 @@ class SIP;
 
 // Forward declaration of the KineCalc_Base class declared in kinecalc_base.h
 
-class P2OSNode
+class P2OSNode : public rclcpp::Node
 {
   /*! \brief P2OS robot driver node.
    *
@@ -90,7 +90,7 @@ class P2OSNode
    */
 
 public:
-  explicit P2OSNode(rclcpp::Node n);
+  explicit P2OSNode(const std::string & node_name);
   virtual ~P2OSNode();
 
 public:
@@ -98,6 +98,7 @@ public:
   int Setup();
   //! Prepare for shutdown.
   int Shutdown();
+  rclcpp::Time get_current_time();
 
   int SendReceive(P2OSPacket * pkt, bool publish_data = true);
 
@@ -118,18 +119,22 @@ public:
   void SendPulse(void);
 
   void check_and_set_vel();
-  void cmdvel_cb(const geometry_msgs::msg::Twist::ConstSharedPtr &);
+  //void cmdvel_cb(const geometry_msgs::msg::Twist::ConstSharedPtr &);
+  void cmdvel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
 
   void check_and_set_motor_state();
-  void cmdmotor_state(const p2os_msgs::MotorStateConstPtr &);
+  //void cmdmotor_state(const p2os_msgs::MotorStateConstPtr &);
+  void cmdmotor_state_callback(const p2os_msgs::msg::MotorState::SharedPtr msg);
 
   void check_and_set_gripper_state();
-  void gripperCallback(const p2os_msgs::GripperStateConstPtr & msg);
+  ///void gripperCallback(const p2os_msgs::msg::GripperStateConstPtr & msg);
+  void gripper_callback(const p2os_msgs::msg::GripperState::SharedPtr msg);
+
   double get_pulse() {return pulse;}
 
   // diagnostic messages
-  void check_voltage(diagnostic_updater::DiagnosticStatusWrapper & stat);
-  void check_stall(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  //void check_voltage(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  //void check_stall(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 protected:
   //todo remove after conversion - 6 lines
@@ -140,10 +145,19 @@ protected:
   //diagnostic_updater::Updater diagnostic_;
   //diagnostic_updater::DiagnosedPublisher<p2os_msgs::BatteryState> batt_pub_;
   
-  ros::Publisher mstate_pub_, grip_state_pub_,
+/*  ros::Publisher mstate_pub_, grip_state_pub_,
     ptz_state_pub_, sonar_pub_, aio_pub_, dio_pub_;
   ros::Publisher pose_pub_;
   ros::Subscriber cmdvel_sub_, cmdmstate_sub_, gripper_sub_, ptz_cmd_sub_;
+  */
+  rclcpp::Publisher<p2os_msgs::msg::BatteryState>::SharedPtr batt_pub_;
+  rclcpp::Publisher<p2os_msgs::msg::MotorState>::SharedPtr mstate_pub_;
+  rclcpp::Publisher<p2os_msgs::msg::GripperState>::SharedPtr grip_state_pub_;
+  rclcpp::Publisher<p2os_msgs::msg::PTZState>::SharedPtr ptz_state_pub_;
+  rclcpp::Publisher<p2os_msgs::msg::SonarArray>::SharedPtr sonar_pub_;
+  rclcpp::Publisher<p2os_msgs::msg::AIO>::SharedPtr aio_pub_;
+  rclcpp::Publisher<p2os_msgs::msg::DIO>::SharedPtr dio_pub_;
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pose_pub_;
 
   tf2_ros::TransformBroadcaster odom_broadcaster;
   //rclcpp::Time veltime; //todo remove after conversion
@@ -196,9 +210,9 @@ public:
   //! Command Velocity subscriber
   geometry_msgs::msg::Twist cmdvel_;
   //! Motor state publisher
-  p2os_msgs::MotorState cmdmotor_state_;
+  p2os_msgs::msg::MotorState cmdmotor_state_;
   //! Gripper state publisher
-  p2os_msgs::GripperState gripper_state_;
+  p2os_msgs::msg::GripperState gripper_state_;
   //! sensor data container
   ros_p2os_data_t p2os_data;
 };

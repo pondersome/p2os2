@@ -33,6 +33,9 @@ constexpr size_t packet_len = 256;
 class P2OSPacket
 {
 public:
+  P2OSPacket(rclcpp::Node::SharedPtr node) : node_(node) {}
+
+  rclcpp::Node::SharedPtr node_;
   unsigned char packet[packet_len];
   unsigned char size;
   rclcpp::Time timestamp;

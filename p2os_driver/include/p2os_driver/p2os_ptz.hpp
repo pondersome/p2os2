@@ -24,7 +24,7 @@
 #ifndef P2OS_DRIVER__P2OS_PTZ_HPP_
 #define P2OS_DRIVER__P2OS_PTZ_HPP_
 
-#include <p2os_msgs/msg/ptz_state.h>
+#include <p2os_msgs/msg/ptz_state.hpp>
 #include <p2os_driver/packet.hpp>
 #include <p2os_driver/robot_params.hpp>
 
@@ -141,7 +141,8 @@ public:
   // Core Functions
   int setup();
   void shutdown();
-  void callback(const p2os_msgs::PTZStateConstPtr & msg);
+  //void callback(const p2os_msgs::PTZStateConstPtr & msg);
+  void callback(const p2os_msgs::msg::PTZState::SharedPtr msg);
 
   // Communication Functions
   int sendCommand(unsigned char * str, int len);
@@ -165,7 +166,7 @@ public:
 
   // Simple getters and setters
   bool isOn() const {return is_on_;}
-  p2os_msgs::PTZState getCurrentState() {return current_state_;}
+  p2os_msgs::msg::PTZState getCurrentState() {return current_state_;}
 
   // Class members
 
@@ -181,7 +182,7 @@ protected:
   bool is_on_;
   int error_code_;
   bool bidirectional_com_;
-  p2os_msgs::PTZState current_state_;
+  p2os_msgs::msg::PTZState current_state_;
 
   // Class constants
   static const int MAX_COMMAND_LENGTH;

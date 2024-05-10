@@ -28,12 +28,15 @@
 
 #include <string>
 
-P2OSNode::P2OSNode(rclcpp::Node nh)
+/*P2OSNode::P2OSNode(rclcpp::Node nh)
 : n(nh),
   batt_pub_(n.advertise<p2os_msgs::BatteryState>("battery_state", 1000),
     diagnostic_,
     diagnostic_updater::FrequencyStatusParam(&desired_freq, &desired_freq, 0.1),
     diagnostic_updater::TimeStampStatusParam()),
+  ptz_(this) */
+P2OSNode::P2OSNode(const std::string & node_name)
+  : Node(node_name),
   ptz_(this)
 {
   /*! \brief Constructor for P2OS node.
@@ -41,65 +44,122 @@ P2OSNode::P2OSNode(rclcpp::Node nh)
    *  This brings up the P2OS system for ROS operation.
    */
 
-  // Use sonar
-  rclcpp::Node n_private("~");
-  n_private.param(std::string("odom_frame_id"), odom_frame_id, std::string("odom"));
-  n_private.param(std::string("base_link_frame_id"), base_link_frame_id, std::string("base_link"));
-  n_private.param("use_sonar", use_sonar_, false);
+  
+  //rclcpp::Node n_private("~");
+  ///n_private.param(std::string("odom_frame_id"), odom_frame_id, std::string("odom"));
+  this->declare_parameter<std::string>("odom_frame_id", "odom");
+  this->get_parameter("odom_frame_id", odom_frame_id);
 
+  //n_private.param(std::string("base_link_frame_id"), base_link_frame_id, std::string("base_link"));
+  this->declare_parameter<std::string>("base_link_frame_id", "base_link");
+  this->get_parameter("base_link_frame_id", odom_frame_id);
+  // Use sonar
+  //n_private.param("use_sonar", use_sonar_, false);
+  this->declare_parameter<bool>("use_sonar", false);
+  this->get_parameter("use_sonar", use_sonar_);
   // read in config options
   // bumpstall
-  n_private.param("bumpstall", bumpstall, -1);
+  //n_private.param("bumpstall", bumpstall, -1);
+  this->declare_parameter<int>("bumpstall", -1);
+  this->get_parameter("bumpstall", bumpstall);
   // pulse
-  n_private.param("pulse", pulse, -1.0);
+  //n_private.param("pulse", pulse, -1.0);
+  this->declare_parameter<double>("pulse", -1.0);
+  this->get_parameter("pulse", pulse);
+  //desired_freq = 10;
+  this->declare_parameter<double>("desired_freq", 10);
+  this->get_parameter("desired_freq", desired_freq);
+  //it seems so weird to me (kv) that these gains aren't doubles:
   // rot_kp
-  n_private.param("rot_kp", rot_kp, -1);
+  //n_private.param("rot_kp", rot_kp, -1);
+  this->declare_parameter<int>("rot_kp", -1);
+  this->get_parameter("rot_kp", rot_kp);
   // rot_kv
-  n_private.param("rot_kv", rot_kv, -1);
+  //n_private.param("rot_kv", rot_kv, -1);
+  this->declare_parameter<int>("rot_kv", -1);
+  this->get_parameter("rot_kv", rot_kv);
   // rot_ki
-  n_private.param("rot_ki", rot_ki, -1);
+  //n_private.param("rot_ki", rot_ki, -1);
+  this->declare_parameter<int>("rot_ki", -1);
+  this->get_parameter("rot_ki", rot_ki);
   // trans_kp
-  n_private.param("trans_kp", trans_kp, -1);
+  //n_private.param("trans_kp", trans_kp, -1);
+  this->declare_parameter<int>("trans_kp", -1);
+  this->get_parameter("trans_kp", trans_kp);
   // trans_kv
-  n_private.param("trans_kv", trans_kv, -1);
+  //n_private.param("trans_kv", trans_kv, -1);
+  this->declare_parameter<int>("trans_kv", -1);
+  this->get_parameter("trans_kv", trans_kv);
   // trans_ki
-  n_private.param("trans_ki", trans_ki, -1);
+  //n_private.param("trans_ki", trans_ki, -1);
+   this->declare_parameter<int>("trans_ki", -1);
+  this->get_parameter("trans_ki", trans_ki);
   // !!! port !!!
   std::string def = DEFAULT_P2OS_PORT;
-  n_private.param("port", psos_serial_port, def);
+  //n_private.param("port", psos_serial_port, def);
+  this->declare_parameter<std::string>("port", def);
+  this->get_parameter("port", odom_frame_id);
   RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "using serial port: [%s]", psos_serial_port.c_str());
-  n_private.param("use_tcp", psos_use_tcp, false);
+  //n_private.param("use_tcp", psos_use_tcp, false);
+   this->declare_parameter<bool>("use_tcp", false);
+  this->get_parameter("use_tcp", psos_use_tcp);
+
   std::string host = DEFAULT_P2OS_TCP_REMOTE_HOST;
-  n_private.param("tcp_remote_host", psos_tcp_host, host);
-  n_private.param("tcp_remote_port", psos_tcp_port, DEFAULT_P2OS_TCP_REMOTE_PORT);
+  //n_private.param("tcp_remote_host", psos_tcp_host, host);
+  this->declare_parameter<std::string>("tcp_remote_host", DEFAULT_P2OS_TCP_REMOTE_HOST);
+  this->get_parameter("tcp_remote_host", host);
+  //n_private.param("tcp_remote_port", psos_tcp_port, DEFAULT_P2OS_TCP_REMOTE_PORT);
+  this->declare_parameter<int>("tcp_remote_port", DEFAULT_P2OS_TCP_REMOTE_PORT);
+  this->get_parameter("tcp_remote_port", psos_tcp_port);
+  
   // radio
-  n_private.param("radio", radio_modemp, 0);
+
+  ///n_private.param("radio", radio_modemp, 0);
+  this->declare_parameter<int>("radio", 0);
+  this->get_parameter("radio", radio_modemp);
+
   // joystick
-  n_private.param("joystick", joystick, 0);
+  //n_private.param("joystick", joystick, 0);
+  this->declare_parameter<int>("joystick", 0);
+  this->get_parameter("joystick", joystick);
+  
   // direct_wheel_vel_control
-  n_private.param("direct_wheel_vel_control", direct_wheel_vel_control, 0);
+  //n_private.param("direct_wheel_vel_control", direct_wheel_vel_control, 0);
+  this->declare_parameter<int>("direct_wheel_vel_control", 0);
+  this->get_parameter("direct_wheel_vel_control", direct_wheel_vel_control);
   // max xpeed
   double spd;
-  n_private.param("max_xspeed", spd, MOTOR_DEF_MAX_SPEED);
-  motor_max_speed = static_cast<int>(rint(1e3 * spd));
+  //n_private.param("max_xspeed", spd, MOTOR_DEF_MAX_SPEED);
+  this->declare_parameter<int>("max_xspeed", MOTOR_DEF_MAX_SPEED);
+  this->get_parameter("max_xspeed", spd);
+  motor_max_speed = static_cast<double>(rint(1e3 * spd));
   // max_yawspeed
-  n_private.param("max_yawspeed", spd, MOTOR_DEF_MAX_TURNSPEED);
+  //n_private.param("max_yawspeed", spd, MOTOR_DEF_MAX_TURNSPEED);
+  this->declare_parameter<double>("max_yawspeed", MOTOR_DEF_MAX_TURNSPEED);
+  this->get_parameter("max_yawspeed", spd);
   motor_max_turnspeed = static_cast<int16_t>(rint(RTOD(spd)));
   // max_xaccel
-  n_private.param("max_xaccel", spd, 0.0);
+  //n_private.param("max_xaccel", spd, 0.0);
+  this->declare_parameter<double>("max_xaccel", 0.0);
+  this->get_parameter("max_xaccel", spd);
   motor_max_trans_accel = static_cast<int16_t>(rint(1e3 * spd));
   // max_xdecel
-  n_private.param("max_xdecel", spd, 0.0);
+  //n_private.param("max_xdecel", spd, 0.0);
+  this->declare_parameter<double>("max_xdecel", 0.0);
+  this->get_parameter("max_xdecel", spd);
   motor_max_trans_decel = static_cast<int16_t>(rint(1e3 * spd));
   // max_yawaccel
-  n_private.param("max_yawaccel", spd, 0.0);
+  //n_private.param("max_yawaccel", spd, 0.0);
+  this->declare_parameter<double>("max_yawaccel", 0.0);
+  this->get_parameter("max_yawaccel", spd);
   motor_max_rot_accel = static_cast<int16_t>(rint(RTOD(spd)));
   // max_yawdecel
-  n_private.param("max_yawdecel", spd, 0.0);
+  //n_private.param("max_yawdecel", spd, 0.0);
+  this->declare_parameter<double>("max_yawdecel", 0.0);
+  this->get_parameter("max_yawdecel", spd);
   motor_max_rot_decel = static_cast<int16_t>(rint(RTOD(spd)));
 
-  desired_freq = 10;
-
+  --- continue  from here 
   // advertise services
   pose_pub_ = n.advertise<nav_msgs::msg::Odometry>("pose", 1000);
   // advertise topics
@@ -652,6 +712,13 @@ int P2OSNode::Shutdown()
   this->sippacket = NULL;
 
   return 0;
+}
+
+rclcpp::Time P2OSNode::get_current_time()
+{
+    // Get the current time
+    return this->now();
+        
 }
 
 

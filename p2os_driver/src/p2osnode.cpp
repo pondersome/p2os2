@@ -23,8 +23,8 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <p2os_driver/p2os.hpp>
-#include <p2os_msgs/MotorState.h>
-#include <tf/transform_datatypes.h>
+#include <p2os_msgs/msg/motor_state.hpp>
+//#include <tf/transform_datatypes.h>
 
 #include <iostream>
 

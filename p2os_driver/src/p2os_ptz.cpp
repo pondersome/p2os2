@@ -146,9 +146,10 @@ void P2OSPtz::shutdown()
   RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "PTZ camera has been shutdown");
 }
 
-void P2OSPtz::callback(const p2os_msgs::PTZStateConstPtr & cmd)
+//void P2OSPtz::callback(const p2os_msgs::PTZStateConstPtr & cmd)
+void callback(const geometry_msgs::msg::Twist::SharedPtr cmd);
 {
-  p2os_msgs::PTZState to_send;
+  p2os_msgs::msg::PTZState to_send;
   bool change_pan_tilt = false;
   bool change_zoom = false;
   to_send.pan = pan_;

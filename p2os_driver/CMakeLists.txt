@@ -24,7 +24,7 @@ add_executable(p2os_driver
   src/p2os_ptz.cpp
 )
 
-ament_target_dependencies(p2os_driver "p2os_msgs" "tf2_ros" "geometry_msgs" "nav_msgs" "rclcpp")
+ament_target_dependencies(p2os_driver rclcpp p2os_msgs "tf2_ros" "geometry_msgs" "nav_msgs")
 ament_export_include_directories(include)
 ament_export_libraries(p2os_driver)
 ament_export_dependencies(p2os_msgs nav_msgs rclcpp geometry_msgs tf2_ros std_msgs kdl_parser)
