@@ -31,30 +31,30 @@
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  auto n = rclcpp::Node::make_shared("p2os");
+  auto node = std::make_shared<P2OSNode>("p2os");
+  //P2OSNode * p = new P2OSNode(n);//ros1 way
+    
 
-  P2OSNode * p = new P2OSNode(n);
-
-  if (p->Setup()) {
+  if (node->Setup()) {
     RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "p2os setup failed...");
     return -1;
   }
 
-  p->ResetRawPositions();
+  node->ResetRawPositions();
 
   rclcpp::Time lastTime;
 
   while (rclcpp::ok()) {
-    p->check_and_set_vel();
-    p->check_and_set_motor_state();
-    p->check_and_set_gripper_state();
+    node->check_and_set_vel();
+    node->check_and_set_motor_state();
+    node->check_and_set_gripper_state();
 
-    if (p->get_pulse() > 0) {
-      rclcpp::Time currentTime = rclcpp::Time::now();
+    if (node->get_pulse() > 0) {
+      rclcpp::Time currentTime = node->now();
       rclcpp::Duration pulseInterval = currentTime - lastTime;
-      if (pulseInterval.toSec() > p->get_pulse()) {
+      if (pulseInterval.seconds() > node->get_pulse()) {
         RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "sending pulse");
-        p->SendPulse();
+        node->SendPulse();
         lastTime = currentTime;
       }
     }
@@ -64,15 +64,15 @@ int main(int argc, char ** argv)
     // never send data back to clients. We need a better way of doing regular
     // checks of the serial port - peek in sendreceive, maybe? Because if there
     // is no data waiting this will sit around waiting until one comes
-    p->SendReceive(NULL, true);
-    p->updateDiagnostics();
+    node->SendReceive(NULL, true);
+    //node->updateDiagnostics();
     rclcpp::spin_some(node);
   }
 
-  if (!p->Shutdown()) {
+  if (!node->Shutdown()) {
     RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"), "p2os shutdown failed... your robot might be heading for the wall?");
   }
-  delete p;
+  //delete p; //std::shared_ptr knows how to cleanup itself
 
   RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "Quitting... ");
   return 0;

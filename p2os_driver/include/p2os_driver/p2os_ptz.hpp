@@ -136,7 +136,7 @@ protected:
 
 public:
   // Constructor
-  explicit P2OSPtz(P2OSNode * p2os, bool bidirectional_com = false);
+  explicit P2OSPtz(P2OSNode* p2os, bool bidirectional_com = false);
 
   // Core Functions
   int setup();

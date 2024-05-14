@@ -131,6 +131,7 @@ public:
   void gripper_callback(const p2os_msgs::msg::GripperState::SharedPtr msg);
 
   double get_pulse() {return pulse;}
+  
 
   // diagnostic messages
   //void check_voltage(diagnostic_updater::DiagnosticStatusWrapper & stat);
@@ -159,8 +160,15 @@ protected:
   rclcpp::Publisher<p2os_msgs::msg::DIO>::SharedPtr dio_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pose_pub_;
 
-  tf2_ros::TransformBroadcaster odom_broadcaster;
-  //rclcpp::Time veltime; //todo remove after conversion
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmdvel_sub_;
+  rclcpp::Subscription<p2os_msgs::msg::MotorState>::SharedPtr cmdmstate_sub_;
+  rclcpp::Subscription<p2os_msgs::msg::GripperState>::SharedPtr gripper_sub_;
+  rclcpp::Subscription<p2os_msgs::msg::PTZState>::SharedPtr ptz_cmd_sub_;
+    
+  P2OSPtz ptz_;
+
+  std::shared_ptr<tf2_ros::TransformBroadcaster> odom_broadcaster;
+  rclcpp::Time veltime;
 
   SIP * sippacket;
   std::string psos_serial_port;
@@ -204,7 +212,7 @@ protected:
   //! Use the sonar array?
   bool use_sonar_;
 
-  P2OSPtz ptz_;
+  //P2OSPtz ptz_;
 
 public:
   //! Command Velocity subscriber

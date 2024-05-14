@@ -37,7 +37,7 @@ const int P2OSPtz::ZOOM_THRESH = 1;
 //
 // Constructors
 //
-P2OSPtz::P2OSPtz(P2OSNode * p2os, bool bidirectional_com)
+P2OSPtz::P2OSPtz(P2OSNode* p2os, bool bidirectional_com)
 : p2os_(p2os), max_zoom_(MAX_ZOOM_OPTIC), pan_(0), tilt_(0), zoom_(0),
   is_on_(false), error_code_(CAM_ERROR_NONE),
   bidirectional_com_(bidirectional_com)
@@ -138,16 +138,19 @@ int P2OSPtz::setup()
 void P2OSPtz::shutdown()
 {
   sendAbsPanTilt(0, 0);
-  usleep(SLEEP_TIME_USEC);
+  //usleep(SLEEP_TIME_USEC);
+  rclcpp::sleep_for(std::chrono::microseconds(SLEEP_TIME_USEC));
   sendAbsZoom(0);
-  usleep(SLEEP_TIME_USEC);
+  //usleep(SLEEP_TIME_USEC);
+  rclcpp::sleep_for(std::chrono::microseconds(SLEEP_TIME_USEC));
   setPower(POWER_OFF);
-  usleep(SLEEP_TIME_USEC);
+  //usleep(SLEEP_TIME_USEC);
+  rclcpp::sleep_for(std::chrono::microseconds(SLEEP_TIME_USEC));
   RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "PTZ camera has been shutdown");
 }
 
 //void P2OSPtz::callback(const p2os_msgs::PTZStateConstPtr & cmd)
-void callback(const geometry_msgs::msg::Twist::SharedPtr cmd);
+void P2OSPtz::callback(const p2os_msgs::msg::PTZState::SharedPtr cmd)
 {
   p2os_msgs::msg::PTZState to_send;
   bool change_pan_tilt = false;
@@ -526,7 +529,8 @@ int P2OSPtz::setPower(Power on)
   if (bidirectional_com_) {
     return receiveCommandAnswer(COMMAND_RESPONSE_BYTES);
   } else {
-    usleep(SLEEP_TIME_USEC);
+    //usleep(SLEEP_TIME_USEC);
+    rclcpp::sleep_for(std::chrono::microseconds(SLEEP_TIME_USEC));
     return 0;
   }
 }
@@ -549,7 +553,8 @@ int P2OSPtz::setControlMode()
   if (bidirectional_com_) {
     return receiveCommandAnswer(COMMAND_RESPONSE_BYTES);
   } else {
-    usleep(SLEEP_TIME_USEC);
+    //usleep(SLEEP_TIME_USEC);
+    rclcpp::sleep_for(std::chrono::microseconds(SLEEP_TIME_USEC));
     return 0;
   }
 }
@@ -572,7 +577,8 @@ int P2OSPtz::sendInit()
   if (bidirectional_com_) {
     return receiveCommandAnswer(COMMAND_RESPONSE_BYTES);
   } else {
-    usleep(SLEEP_TIME_USEC);
+    //usleep(SLEEP_TIME_USEC);
+    rclcpp::sleep_for(std::chrono::microseconds(SLEEP_TIME_USEC));
     return 0;
   }
 }
@@ -721,7 +727,8 @@ int P2OSPtz::sendAbsZoom(int zoom)
   if (bidirectional_com_) {
     return receiveCommandAnswer(COMMAND_RESPONSE_BYTES);
   } else {
-    usleep(SLEEP_TIME_USEC);
+    //usleep(SLEEP_TIME_USEC);
+    rclcpp::sleep_for(std::chrono::microseconds(SLEEP_TIME_USEC));
     return 0;
   }
   // return (receiveCommandAnswer(COMMAND_RESPONSE_BYTES));
@@ -761,7 +768,8 @@ int P2OSPtz::setDefaultTiltRange()
   if (bidirectional_com_) {
     return receiveCommandAnswer(COMMAND_RESPONSE_BYTES);
   } else {
-    usleep(SLEEP_TIME_USEC);
+    //usleep(SLEEP_TIME_USEC);
+    rclcpp::sleep_for(std::chrono::microseconds(SLEEP_TIME_USEC));
     return 0;
   }
 
@@ -894,7 +902,8 @@ int P2OSPtz::sendAbsPanTilt(int pan, int tilt)
   if (bidirectional_com_) {
     return receiveCommandAnswer(COMMAND_RESPONSE_BYTES);
   } else {
-    usleep(SLEEP_TIME_USEC);
+    //usleep(SLEEP_TIME_USEC);
+    rclcpp::sleep_for(std::chrono::microseconds(SLEEP_TIME_USEC));
     return 0;
   }
 

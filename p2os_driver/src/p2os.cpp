@@ -21,6 +21,7 @@
  */
 #include <termios.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <string.h>
 
 #include <rclcpp/rclcpp.hpp>
@@ -159,38 +160,46 @@ P2OSNode::P2OSNode(const std::string & node_name)
   this->get_parameter("max_yawdecel", spd);
   motor_max_rot_decel = static_cast<int16_t>(rint(RTOD(spd)));
 
-  --- continue  from here 
-  // advertise services
-  pose_pub_ = n.advertise<nav_msgs::msg::Odometry>("pose", 1000);
+  // advertise services - except i don't see any services in P2OS
+  
   // advertise topics
-  mstate_pub_ = n.advertise<p2os_msgs::MotorState>("motor_state", 1000);
-  grip_state_pub_ = n.advertise<p2os_msgs::GripperState>("gripper_state", 1000);
-  ptz_state_pub_ = n.advertise<p2os_msgs::PTZState>("ptz_state", 1000);
-  sonar_pub_ = n.advertise<p2os_msgs::SonarArray>("sonar", 1000);
-  aio_pub_ = n.advertise<p2os_msgs::AIO>("aio", 1000);
-  dio_pub_ = n.advertise<p2os_msgs::DIO>("dio", 1000);
+  pose_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("pose", 1000);
+  mstate_pub_ = this->create_publisher<p2os_msgs::msg::MotorState>("motor_state", 1000);
+  grip_state_pub_ = this->create_publisher<p2os_msgs::msg::GripperState>("gripper_state", 1000);
+  ptz_state_pub_ = this->create_publisher<p2os_msgs::msg::PTZState>("ptz_state", 1000);
+  sonar_pub_ = this->create_publisher<p2os_msgs::msg::SonarArray>("sonar", 1000);
+  aio_pub_ = this->create_publisher<p2os_msgs::msg::AIO>("aio", 1000);
+  dio_pub_ = this->create_publisher<p2os_msgs::msg::DIO>("dio", 1000);
 
+  //instantiate the TransformBroadcaster
+  //odom_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this->get_node_base_interface());
+  odom_broadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+  
   // subscribe to services
+  /*
   cmdvel_sub_ = n.subscribe("cmd_vel", 1, &P2OSNode::cmdvel_cb, this);
   cmdmstate_sub_ = n.subscribe("cmd_motor_state", 1, &P2OSNode::cmdmotor_state,
       this);
   gripper_sub_ = n.subscribe("gripper_control", 1, &P2OSNode::gripperCallback,
       this);
   ptz_cmd_sub_ = n.subscribe("ptz_control", 1, &P2OSPtz::callback, &ptz_);
+  */
+  
 
-  veltime = rclcpp::Time::now();
+  veltime = this->now();
 
   // add diagnostic functions
-  diagnostic_.add("Motor Stall", this, &P2OSNode::check_stall);
-  diagnostic_.add("Battery Voltage", this, &P2OSNode::check_voltage);
+  //diagnostic_.add("Motor Stall", this, &P2OSNode::check_stall);
+  //diagnostic_.add("Battery Voltage", this, &P2OSNode::check_voltage);
 
   // initialize robot parameters (player legacy)
   initialize_robot_params();
-}
+} //end Constructor
 
 P2OSNode::~P2OSNode() { /** Destructor **/}
 
-void P2OSNode::cmdmotor_state(const p2os_msgs::MotorStateConstPtr & msg)
+//void P2OSNode::cmdmotor_state(const p2os_msgs::MotorStateConstPtr & msg)
+void P2OSNode::cmdmotor_state_callback(const p2os_msgs::msg::MotorState::SharedPtr msg)
 {
   motor_dirty = true;
   cmdmotor_state_ = *msg;
@@ -250,24 +259,24 @@ void P2OSNode::check_and_set_gripper_state()
   SendReceive(&lift_packet, false);
 }
 
-void P2OSNode::cmdvel_cb(const geometry_msgs::msg::Twist::ConstSharedPtr & msg)
+void P2OSNode::cmdvel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
   if (fabs(msg->linear.x - cmdvel_.linear.x) > 0.01 ||
     fabs(msg->angular.z - cmdvel_.angular.z) > 0.01)
   {
-    veltime = rclcpp::Time::now();
+    veltime = this->now();//rclcpp::Time::now();
     RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "new speed: [%0.2f,%0.2f](%0.3f)", msg->linear.x * 1e3, msg->angular.z,
-      veltime.toSec());
+      veltime.seconds());
     vel_dirty = true;
     cmdvel_ = *msg;
   } else {
-    rclcpp::Duration veldur = rclcpp::Time::now() - veltime;
-    if (veldur.toSec() > 2.0 &&
+    rclcpp::Duration veldur = this->now() - veltime;
+    if (veldur.seconds() > 2.0 &&
       ((fabs(cmdvel_.linear.x) > 0.01) || (fabs(cmdvel_.angular.z) > 0.01)))
     {
-      RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "maintaining old speed: %0.3f|%0.3f", veltime.toSec(), rclcpp::Time::now().toSec());
+      RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "maintaining old speed: %0.3f|%0.3f", veltime.seconds(), this->now().seconds());
       vel_dirty = true;
-      veltime = rclcpp::Time::now();
+      veltime = this->now();
     }
   }
 }
@@ -322,7 +331,7 @@ void P2OSNode::check_and_set_vel()
   SendReceive(&motorpacket);
 }
 
-void P2OSNode::gripperCallback(const p2os_msgs::GripperStateConstPtr & msg)
+void P2OSNode::gripper_callback(const p2os_msgs::msg::GripperState::SharedPtr msg)
 {
   gripper_dirty_ = true;
   gripper_state_ = *msg;
@@ -408,7 +417,10 @@ int P2OSNode::Setup()
         command = SYNC0;
         packet.Build(&command, 1);
         packet.Send(this->psos_fd);
-        usleep(P2OS_CYCLETIME_USEC);
+        //usleep(P2OS_CYCLETIME_USEC);
+        rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
+
+
         break;
       case AFTER_FIRST_SYNC:
         RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "turning off NONBLOCK mode...");
@@ -431,12 +443,14 @@ int P2OSNode::Setup()
         RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():shouldn't be here...");
         break;
     }
-    usleep(P2OS_CYCLETIME_USEC);
+    //usleep(P2OS_CYCLETIME_USEC);
+    rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
 
     if (receivedpacket.Receive(this->psos_fd)) {
       if ((psos_state == NO_SYNC) && (num_sync_attempts >= 0)) {
         num_sync_attempts--;
-        usleep(P2OS_CYCLETIME_USEC);
+        //usleep(P2OS_CYCLETIME_USEC);
+        rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
         continue;
       } else {
         // couldn't connect; try different speed.
@@ -486,13 +500,15 @@ int P2OSNode::Setup()
           packet.Build(&command, 1);
           packet.Send(this->psos_fd);
           sent_close = true;
-          usleep(2 * P2OS_CYCLETIME_USEC);
+          //usleep(2 * P2OS_CYCLETIME_USEC);
+          rclcpp::sleep_for(std::chrono::microseconds(2 * P2OS_CYCLETIME_USEC));
           tcflush(this->psos_fd, TCIFLUSH);
           psos_state = NO_SYNC;
         }
         break;
     }
-    usleep(P2OS_CYCLETIME_USEC);
+    //usleep(P2OS_CYCLETIME_USEC);
+    rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
   }
   if (psos_state != READY) {
     if (this->psos_use_tcp) {
@@ -514,16 +530,18 @@ int P2OSNode::Setup()
   cnt++;
 
   std::string hwID = std::string(name) + ": " + std::string(type) + "/" + std::string(subtype);
-  diagnostic_.setHardwareID(hwID);
+  //diagnostic_.setHardwareID(hwID);
 
   command = OPEN;
   packet.Build(&command, 1);
   packet.Send(this->psos_fd);
-  usleep(P2OS_CYCLETIME_USEC);
+  //usleep(P2OS_CYCLETIME_USEC);
+  rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
   command = PULSE;
   packet.Build(&command, 1);
   packet.Send(this->psos_fd);
-  usleep(P2OS_CYCLETIME_USEC);
+  //usleep(P2OS_CYCLETIME_USEC);
+  rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
 
   RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "Done.\n   Connected to %s, a %s %s", name, type, subtype);
 
@@ -698,12 +716,14 @@ int P2OSNode::Shutdown()
   command[0] = STOP;
   packet.Build(command, 1);
   packet.Send(this->psos_fd);
-  usleep(P2OS_CYCLETIME_USEC);
+  //usleep(P2OS_CYCLETIME_USEC);
+  rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
 
   command[0] = CLOSE;
   packet.Build(command, 1);
   packet.Send(this->psos_fd);
-  usleep(P2OS_CYCLETIME_USEC);
+  //usleep(P2OS_CYCLETIME_USEC);
+  rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
 
   close(this->psos_fd);
   this->psos_fd = -1;
@@ -726,26 +746,26 @@ void
 P2OSNode::StandardSIPPutData(rclcpp::Time ts)
 {
   p2os_data.position.header.stamp = ts;
-  pose_pub_.publish(p2os_data.position);
+  pose_pub_->publish(p2os_data.position);
   p2os_data.odom_trans.header.stamp = ts;
-  odom_broadcaster.sendTransform(p2os_data.odom_trans);
+  odom_broadcaster->sendTransform(p2os_data.odom_trans);
 
   p2os_data.batt.header.stamp = ts;
-  batt_pub_.publish(p2os_data.batt);
-  mstate_pub_.publish(p2os_data.motors);
+  batt_pub_->publish(p2os_data.batt);
+  mstate_pub_->publish(p2os_data.motors);
 
   // put sonar data
   p2os_data.sonar.header.stamp = ts;
-  sonar_pub_.publish(p2os_data.sonar);
+  sonar_pub_->publish(p2os_data.sonar);
 
   // put aio data
-  aio_pub_.publish(p2os_data.aio);
+  aio_pub_->publish(p2os_data.aio);
   // put dio data
-  dio_pub_.publish(p2os_data.dio);
+  dio_pub_->publish(p2os_data.dio);
 
   // put gripper and lift data
-  grip_state_pub_.publish(p2os_data.gripper);
-  ptz_state_pub_.publish(ptz_.getCurrentState());
+  grip_state_pub_->publish(p2os_data.gripper);
+  ptz_state_pub_->publish(ptz_.getCurrentState());
 
   // put bumper data
   // put compass data
@@ -804,6 +824,7 @@ int P2OSNode::SendReceive(P2OSPacket * pkt, bool publish_data)
   return 0;
 }
 
+/*  ROS1 style diagnostics are not a part of ROS2
 void P2OSNode::updateDiagnostics()
 {
   diagnostic_.update();
@@ -831,6 +852,8 @@ void P2OSNode::check_stall(diagnostic_updater::DiagnosticStatusWrapper & stat)
   stat.add("left wheel stall", sippacket->lwstall);
   stat.add("right wheel stall", sippacket->rwstall);
 }
+
+*/
 
 void P2OSNode::ResetRawPositions()
 {

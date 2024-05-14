@@ -31,22 +31,22 @@
 void P2OSPacket::Print()
 {
   if (packet) {
-    RCLCPP_INFO(node_->get_logger(), "\"");
+    RCLCPP_INFO(logger_, "\"");
     for (int i = 0; i < size; i++) {
-      RCLCPP_INFO(node_->get_logger(), "%u ", packet[i]);
+      RCLCPP_INFO(logger_, "%u ", packet[i]);
     }
-    RCLCPP_INFO(node_->get_logger(), "\"");
+    RCLCPP_INFO(logger_, "\"");
   }
 }
 
 void P2OSPacket::PrintHex()
 {
   if (packet) {
-    RCLCPP_INFO(node_->get_logger(), "\"");
+    RCLCPP_INFO(logger_, "\"");
     for (int i = 0; i < size; i++) {
-      RCLCPP_INFO(node_->get_logger(), "0x%.2x ", packet[i]);
+      RCLCPP_INFO(logger_, "0x%.2x ", packet[i]);
     }
-    RCLCPP_INFO(node_->get_logger(), "\"");
+    RCLCPP_INFO(logger_, "\"");
   }
 }
 
@@ -90,7 +90,7 @@ int P2OSPacket::Receive(int fd)
       cnt = 0;
       while (cnt != 1) {
         if ((cnt += read(fd, &prefix[2], 1)) < 0) {
-          RCLCPP_ERROR(node_->get_logger(), 
+          RCLCPP_ERROR(logger_, 
             "Error reading packet.hppeader from robot connection: P2OSPacket():Receive():read():");
           return 1;
         }
@@ -100,7 +100,7 @@ int P2OSPacket::Receive(int fd)
         break;
       }
 
-      timestamp = node_->get_clock()->now();
+      timestamp = clock_.now();
 
       // GlobalTime->GetTimeDouble(&timestamp);
 
@@ -116,7 +116,7 @@ int P2OSPacket::Receive(int fd)
     cnt = 0;
     while (cnt != prefix[2]) {
       if ((cnt += read(fd, &packet[3 + cnt], prefix[2] - cnt)) < 0) {
-        RCLCPP_ERROR(node_->get_logger(), 
+        RCLCPP_ERROR(logger_, 
           "Error reading packet body from robot connection: P2OSPacket():Receive():read():");
         return 1;
       }
@@ -136,7 +136,7 @@ int P2OSPacket::Build(unsigned char * data, unsigned char datasize)
   packet[1] = 0xFB;
 
   if (size > 198) {
-    RCLCPP_ERROR(node_->get_logger(), "Packet to P2OS can't be larger than 200 bytes");
+    RCLCPP_ERROR(logger_, "Packet to P2OS can't be larger than 200 bytes");
     return 1;
   }
   packet[2] = datasize + 2;
@@ -148,7 +148,7 @@ int P2OSPacket::Build(unsigned char * data, unsigned char datasize)
   packet[3 + datasize + 1] = chksum & 0xFF;
 
   if (!Check()) {
-    RCLCPP_ERROR(node_->get_logger(), "DAMN");
+    RCLCPP_ERROR(logger_, "DAMN");
     return 1;
   }
   return 0;
@@ -160,7 +160,7 @@ int P2OSPacket::Send(int fd)
 
   while (cnt != size) {
     if ((cnt += write(fd, packet, size)) < 0) {
-      RCLCPP_ERROR(node_->get_logger(), "Send");
+      RCLCPP_ERROR(logger_, "Send");
       return 1;
     }
   }

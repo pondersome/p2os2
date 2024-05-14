@@ -31,6 +31,8 @@
 #include <p2os_driver/sip.hpp>
 //#include <tf2/tf2.hpp>
 //#include <tf/transform_datatypes.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <sstream>
 
 void SIP::FillStandard(ros_p2os_data_t * data)
@@ -65,8 +67,12 @@ void SIP::FillStandard(ros_p2os_data_t * data)
   data->position.pose.pose.position.x = px;
   data->position.pose.pose.position.y = py;
   data->position.pose.pose.position.z = 0.0;
-  data->position.pose.pose.orientation = tf::createQuaternionMsgFromYaw(pa);
-
+  //data->position.pose.pose.orientation = tf::createQuaternionMsgFromYaw(pa); ROS1 version
+  double yaw=pa;
+  tf2::Quaternion q;
+  q.setRPY(0,0,yaw);
+  geometry_msgs::msg::Quaternion q_msg = tf2::toMsg(q);
+  data->position.pose.pose.orientation = q_msg;
   // add rates
   data->position.twist.twist.linear.x = ((lvel + rvel) / 2) / 1e3;
   data->position.twist.twist.linear.y = 0.0;
@@ -91,7 +97,8 @@ void SIP::FillStandard(ros_p2os_data_t * data)
   data->odom_trans.transform.translation.x = px;
   data->odom_trans.transform.translation.y = py;
   data->odom_trans.transform.translation.z = 0;
-  data->odom_trans.transform.rotation = tf::createQuaternionMsgFromYaw(pa);
+  //data->odom_trans.transform.rotation = tf::createQuaternionMsgFromYaw(pa);
+  data->odom_trans.transform.rotation = q_msg;
 
   // battery
   data->batt.voltage = battery / 10.0;

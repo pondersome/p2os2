@@ -32,10 +32,14 @@ constexpr size_t packet_len = 256;
 
 class P2OSPacket
 {
+private:
+     rclcpp::Logger logger_;
+     rclcpp::Clock clock_;
 public:
-  P2OSPacket(rclcpp::Node::SharedPtr node) : node_(node) {}
+  //P2OSPacket(rclcpp::Node::SharedPtr node) : node_(node) {}
+  P2OSPacket() : logger_(rclcpp::get_logger("p2os_driver")), clock_(RCL_ROS_TIME) {}
 
-  rclcpp::Node::SharedPtr node_;
+  //rclcpp::Node::SharedPtr node_; //seems like this is only used to get a logger connected to the node that instantiated the packet?
   unsigned char packet[packet_len];
   unsigned char size;
   rclcpp::Time timestamp;
