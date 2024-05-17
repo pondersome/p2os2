@@ -186,7 +186,20 @@ P2OSNode::P2OSNode(const std::string & node_name)
       this);
   ptz_cmd_sub_ = n.subscribe("ptz_control", 1, &P2OSPtz::callback, &ptz_);
   */
+
+  cmdvel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+    "cmd_vel", 1, std::bind(&P2OSNode::cmdvel_callback, this, std::placeholders::_1));
+
+  cmdmstate_sub_ = this->create_subscription<p2os_msgs::msg::MotorState>(
+    "cmd_motor_state", 1, std::bind(&P2OSNode::cmdmotor_state_callback, this, std::placeholders::_1));
+
   
+  gripper_sub_ = this->create_subscription<p2os_msgs::msg::GripperState>(
+    "gripper_control", 1, std::bind(&P2OSNode::gripper_callback, this, std::placeholders::_1));
+
+  
+  ptz_cmd_sub_ = this->create_subscription<p2os_msgs::msg::PTZState>(
+    "ptz_control", 1, std::bind(&P2OSPtz::callback, &ptz_, std::placeholders::_1));
 
   veltime = this->now();
 

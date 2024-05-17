@@ -91,7 +91,7 @@ int P2OSPacket::Receive(int fd)
       while (cnt != 1) {
         if ((cnt += read(fd, &prefix[2], 1)) < 0) {
           RCLCPP_ERROR(logger_, 
-            "Error reading packet.hppeader from robot connection: P2OSPacket():Receive():read():");
+            "Error reading packet header from robot connection: P2OSPacket():Receive():read():");
           return 1;
         }
       }
