@@ -97,10 +97,15 @@ int P2OSPacket::Receive(int fd)
       }
 
       if (prefix[0] == 0xFA && prefix[1] == 0xFB) {
+        timestamp = clock_.now();
+        // Convert the time to a string if logging timestamp
+        //std::string time_str = std::to_string(timestamp.seconds());
+        // Log the time string
+        //RCLCPP_DEBUG(logger_, "Time after receive packet parse: %s", time_str.c_str());
         break;
       }
 
-      timestamp = clock_.now();
+
 
       // GlobalTime->GetTimeDouble(&timestamp);
 

@@ -5,8 +5,8 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     # Define paths to package shares and config files
-    p2os_launch_dir = FindPackageShare('p2os_launch')
-    joystick_config = p2os_launch_dir.find('launch/logi_gamepad.yaml')
+    #p2os_launch_dir = FindPackageShare('p2os_launch')
+    #joystick_config = p2os_launch_dir.find('launch/logi_gamepad.yaml')
 
     return LaunchDescription([
         # Declare the parameters for teleop_base node
@@ -31,6 +31,7 @@ def generate_launch_description():
             package='joy',
             executable='joy_node',
             name='logitech_joy_controller',
-            parameters=[joystick_config]
+            #parameters=[joystick_config]
+            parameters = [{'dev': '/dev/input/js1'}]
         ),
     ])

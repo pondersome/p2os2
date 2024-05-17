@@ -95,11 +95,12 @@ P2OSNode::P2OSNode(const std::string & node_name)
   //n_private.param("trans_ki", trans_ki, -1);
    this->declare_parameter<int>("trans_ki", -1);
   this->get_parameter("trans_ki", trans_ki);
-  // !!! port !!!
+  
+
   std::string def = DEFAULT_P2OS_PORT;
   //n_private.param("port", psos_serial_port, def);
   this->declare_parameter<std::string>("port", def);
-  this->get_parameter("port", odom_frame_id);
+  this->get_parameter("port", psos_serial_port);
   RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "using serial port: [%s]", psos_serial_port.c_str());
   //n_private.param("use_tcp", psos_use_tcp, false);
    this->declare_parameter<bool>("use_tcp", false);
@@ -131,7 +132,7 @@ P2OSNode::P2OSNode(const std::string & node_name)
   // max xpeed
   double spd;
   //n_private.param("max_xspeed", spd, MOTOR_DEF_MAX_SPEED);
-  this->declare_parameter<int>("max_xspeed", MOTOR_DEF_MAX_SPEED);
+  this->declare_parameter<double>("max_xspeed", MOTOR_DEF_MAX_SPEED);
   this->get_parameter("max_xspeed", spd);
   motor_max_speed = static_cast<double>(rint(1e3 * spd));
   // max_yawspeed
@@ -162,14 +163,15 @@ P2OSNode::P2OSNode(const std::string & node_name)
 
   // advertise services - except i don't see any services in P2OS
   
-  // advertise topics
-  pose_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("pose", 1000);
-  mstate_pub_ = this->create_publisher<p2os_msgs::msg::MotorState>("motor_state", 1000);
-  grip_state_pub_ = this->create_publisher<p2os_msgs::msg::GripperState>("gripper_state", 1000);
-  ptz_state_pub_ = this->create_publisher<p2os_msgs::msg::PTZState>("ptz_state", 1000);
-  sonar_pub_ = this->create_publisher<p2os_msgs::msg::SonarArray>("sonar", 1000);
-  aio_pub_ = this->create_publisher<p2os_msgs::msg::AIO>("aio", 1000);
-  dio_pub_ = this->create_publisher<p2os_msgs::msg::DIO>("dio", 1000);
+  // create the publishers
+  pose_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("pose", 10);
+  batt_pub_ = this->create_publisher<p2os_msgs::msg::BatteryState>("battery_state", 10);
+  mstate_pub_ = this->create_publisher<p2os_msgs::msg::MotorState>("motor_state", 10);
+  grip_state_pub_ = this->create_publisher<p2os_msgs::msg::GripperState>("gripper_state", 10);
+  ptz_state_pub_ = this->create_publisher<p2os_msgs::msg::PTZState>("ptz_state", 10);
+  sonar_pub_ = this->create_publisher<p2os_msgs::msg::SonarArray>("sonar", 10);
+  aio_pub_ = this->create_publisher<p2os_msgs::msg::AIO>("aio", 10);
+  dio_pub_ = this->create_publisher<p2os_msgs::msg::DIO>("dio", 10);
 
   //instantiate the TransformBroadcaster
   //odom_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this->get_node_base_interface());
@@ -443,6 +445,7 @@ int P2OSNode::Setup()
         RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"), "P2OS::Setup():shouldn't be here...");
         break;
     }
+    
     //usleep(P2OS_CYCLETIME_USEC);
     rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
 
@@ -745,6 +748,11 @@ rclcpp::Time P2OSNode::get_current_time()
 void
 P2OSNode::StandardSIPPutData(rclcpp::Time ts)
 {
+   // Convert the time to a string
+    std::string time_str = std::to_string(ts.seconds());
+
+    // Log the time string
+    //RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Time at SIPPutData: %s", time_str.c_str());
   p2os_data.position.header.stamp = ts;
   pose_pub_->publish(p2os_data.position);
   p2os_data.odom_trans.header.stamp = ts;
@@ -801,6 +809,7 @@ int P2OSNode::SendReceive(P2OSPacket * pkt, bool publish_data)
       this->sippacket->FillStandard(&(this->p2os_data));
 
       if (publish_data) {
+        //RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "Timestamp before StandardSIPPutData call: %d", packet.timestamp);
         this->StandardSIPPutData(packet.timestamp);
       }
     } else if (ser_aux) {

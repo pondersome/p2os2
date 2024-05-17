@@ -36,8 +36,17 @@ private:
      rclcpp::Logger logger_;
      rclcpp::Clock clock_;
 public:
-  //P2OSPacket(rclcpp::Node::SharedPtr node) : node_(node) {}
-  P2OSPacket() : logger_(rclcpp::get_logger("p2os_driver")), clock_(RCL_ROS_TIME) {}
+  //P2OSPacket(rclcpp::Node::SharedPtr node) : node_(node) {} //i think the magical ros tool thought this was supposed to be a node
+  P2OSPacket() : logger_(rclcpp::get_logger("p2os_driver")), clock_(RCL_ROS_TIME) {
+    // Debug: Print the current time to check clock initialization
+    // Get the current time
+    rclcpp::Time current_time = clock_.now();
+
+    // Convert the time to a string
+    //std::string time_str = std::to_string(current_time.seconds());
+    // Log the time string
+    //RCLCPP_DEBUG(logger_, "Time at packet allocation: %s", time_str.c_str());
+  }
 
   //rclcpp::Node::SharedPtr node_; //seems like this is only used to get a logger connected to the node that instantiated the packet?
   unsigned char packet[packet_len];
