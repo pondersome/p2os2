@@ -1,4 +1,4 @@
-# p2os2 - updated P2OS for ROS2 Noetic
+# p2os2 - updated P2OS for ROS2 Foxy
 
 P2OS is a driver for the Pioneer robots. This driver was originally written for Player/Stage by Brian Gerkey.
 
