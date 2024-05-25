@@ -6,7 +6,6 @@
 	<arg name="KeyboardTeleop" value="0"/>
 	<arg name="JoystickTeleop" value="0"/>
 	<arg name="Transform" value="1"/>
-	<arg name="Dashboard" value="0"/>
 	<arg name="enableMotor" value="1"/>
 
 
@@ -16,13 +15,6 @@
                 <param name="use_sonar" type ="bool" value="false"/>
         </node>
 	</group>
-	
-
-	<!-- Start the Dashboard -->
-	<group if="$(arg Dashboard)">
-	<node pkg="p2os_dashboard" name="p2os_dashboard" type="p2os_dashboard"/>
-	</group>
-	
 
         <!-- Start the teleoperation node for keyboard control -->
         <group if="$(arg KeyboardTeleop)">
@@ -39,14 +31,10 @@
 		<include file="$(find p2os_launch)/launch/tf_base_link_to_laser.launch" />          
         </group>
 
-
-
         <!-- Start the Hokuyo Laser node if Hokuyo Laser is used -->
         <group if="$(arg HokuyoLaser)">
                 <include file="$(find p2os_launch)/launch/hokuyo.launch" /> 
         </group>
-
-
 
         <!-- Start the SICK LMS Laser Node if a SICK Laser is used -->
         <group if="$(arg SICKLMSLaser)">
@@ -61,4 +49,3 @@
         <include file="$(find p2os_urdf)/launch/pioneer3at_urdf.launch"/>
         
 </launch>
-
