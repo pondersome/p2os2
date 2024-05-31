@@ -18,9 +18,9 @@ add_executable(p2os_publisher src/publisher.cc)
 
 add_executable(p2os_publisher_3at src/publisher3at.cc)
 add_executable(p2os_publisher_3dx src/publisher3dx.cc)
-ament_target_dependencies(p2os_publisher rclcpp std_msgs sensor_msgs)
-ament_target_dependencies(p2os_publisher_3at rclcpp sensor_msgs)
-ament_target_dependencies(p2os_publisher_3dx rclcpp sensor_msgs)
+ament_target_dependencies(p2os_publisher rclcpp std_msgs sensor_msgs tf2_ros kdl_parser)
+ament_target_dependencies(p2os_publisher_3at rclcpp sensor_msgs tf2_ros kdl_parser)
+ament_target_dependencies(p2os_publisher_3dx rclcpp sensor_msgs tf2_ros kdl_parser)
 ament_export_dependencies(tf2_ros urdf geometry_msgs sensor_msgs std_msgs kdl_parser)
 ament_package()
 

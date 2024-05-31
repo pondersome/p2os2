@@ -5,7 +5,9 @@ find_package(p2os_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(kdl_parser REQUIRED)
 
@@ -24,7 +26,7 @@ add_executable(p2os_driver
   src/p2os_ptz.cpp
 )
 
-ament_target_dependencies(p2os_driver rclcpp p2os_msgs "tf2_ros" "geometry_msgs" "nav_msgs")
+ament_target_dependencies(p2os_driver rclcpp p2os_msgs "tf2_ros" "geometry_msgs" "nav_msgs" tf2_geometry_msgs)
 ament_export_include_directories(include)
 ament_export_libraries(p2os_driver)
 ament_export_dependencies(p2os_msgs nav_msgs rclcpp geometry_msgs tf2_ros std_msgs kdl_parser)
