@@ -371,15 +371,18 @@
 <xacro:macro name="p3at_gazebo_ext">
 
 <gazebo>
-  <plugin name="skid_steer_drive_controller" filename="libgazebo_ros_skid_steer_drive.so">
+  <plugin
+        filename="gz-sim-diff-drive-system"
+        name="gz::sim::systems::DiffDrive">
     <updateRate>100.0</updateRate>
     <robotNamespace>/</robotNamespace>
-    <leftFrontJoint>p3at_front_left_wheel_joint</leftFrontJoint>
-    <rightFrontJoint>p3at_front_right_wheel_joint</rightFrontJoint>
-    <leftRearJoint>p3at_back_left_wheel_joint</leftRearJoint>
-    <rightRearJoint>p3at_back_right_wheel_joint</rightRearJoint>
-    <wheelSeparation>0.4</wheelSeparation>
-    <wheelDiameter>0.215</wheelDiameter>
+	<num_wheel_pairs>2</num_wheel_pairs>
+    <left_joint>p3at_front_left_wheel_joint</left_joint>
+	<left_joint>p3at_back_left_wheel_joint</left_joint>
+    <right_joint>p3at_front_right_wheel_joint</right_joint>
+    <right_joint>p3at_back_right_wheel_joint</right_joint>
+    <wheel_separation>0.4</wheel_separation>
+    <wheel_diameter>0.215</wheel_diameter>
     <robotBaseFrame>base_link</robotBaseFrame>
     <torque>200</torque>
     <topicName>cmd_vel</topicName>
