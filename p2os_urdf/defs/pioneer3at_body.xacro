@@ -6,6 +6,7 @@
        xmlns:xacro="http://ros.org/wiki/xacro"
 >
 
+
 <!-- Chassis -->
 	<link name="base_link">
 		<inertial>
@@ -28,12 +29,16 @@
 			<origin xyz="0 0 0.177" rpy="0 0 0"/>
 				<geometry>
 					<mesh filename="package://p2os_urdf/meshes/p3at_meshes/chassis.stl"/>
+					<!--<box size="0.4 0.28 0.17"/>-->
 				</geometry>
 		</collision>
 	</link>
+	
 	<gazebo reference="base_link">
 		<material value="Gazebo/Red"/>
 	</gazebo>
+
+
 
 <!-- Top -->
 	<link name="top_plate">
@@ -56,7 +61,8 @@
 		<collision>
 			<origin xyz="0 0 0" rpy="0 0 0"/>
 			<geometry>
-				<box size="0 0 0"/>
+				<mesh filename="package://p2os_urdf/meshes/p3at_meshes/top.stl"/>
+				<!--<box size="0.01 0.01 0.01"/>-->
 			</geometry>
 		</collision>
 	</link>
@@ -86,12 +92,7 @@
 				<color rgba="0.715 0.583 0.210 1.0"/>
 			</material>
 		</visual>
-		<collision>
-			<origin xyz="0 0 0" rpy="0 0 0"/>
-			<geometry>
-				<box size="0 0 0"/>
-			</geometry>
-		</collision>
+
 	</link>
 	<gazebo reference="front_sonar">
 		<material value="Gazebo/Yellow"/>
@@ -119,12 +120,6 @@
 				<color rgba="0.715 0.583 0.210 1.0"/>
 			</material>
 		</visual>
-		<collision>
-			<origin xyz="0 0 0" rpy="0 0 0"/>
-			<geometry>
-				<box size="0 0 0"/>
-			</geometry>
-		</collision>
 	</link>
 	<gazebo reference="back_sonar">
 		<material value="Gazebo/Yellow"/>
@@ -157,7 +152,8 @@
 	<collision>
 		<origin xyz="0 0 0" rpy="0 0 0"/>
 		<geometry>
-			<box size="0 0 0"/>
+			<mesh filename="package://p2os_urdf/meshes/p3at_meshes/axle.stl"/>
+			<!--<box size="0.01 0.01 0.01"/>-->
 		</geometry>
 	</collision>
 	</link>
@@ -190,7 +186,7 @@
 	<collision>
 		<origin xyz="0 0 0" rpy="0 0 0"/>
 		<geometry>
-			<box size="0 0 0"/>
+			<mesh filename="package://p2os_urdf/meshes/p3at_meshes/${suffix}_hubcap.stl"/>
 		</geometry>
 	</collision>
 	</link>
@@ -264,6 +260,7 @@
 		<origin xyz="0 0 0" rpy="0 0 0"/>
 		<geometry>
 			<mesh filename="package://p2os_urdf/meshes/p3at_meshes/axle.stl"/>
+			<!--<box size="0.01 0.01 0.01"/>-->
 		</geometry>
 	</collision>
 	</link>

@@ -27,7 +27,7 @@ def generate_launch_description():
                     package='p2os_driver',
                     executable='p2os_driver',
                     name='p2os_driver',
-                    parameters=[{'use_sonar': False}]
+                    parameters=[{'use_sonar': True}]
                 )
             ],
             condition=IfCondition(LaunchConfiguration('P2OS_Driver'))

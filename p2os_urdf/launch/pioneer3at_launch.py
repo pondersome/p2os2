@@ -17,7 +17,7 @@ def generate_launch_description():
 
     # Path to Gazebo empty world launch file
     gazebo_launch_file = PathJoinSubstitution([
-        FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'
+        FindPackageShare('gazebo_ros'), 'launch', 'empty_world.launch.py'
     ])
 
     return LaunchDescription([
@@ -39,10 +39,10 @@ def generate_launch_description():
         ),
         # Node to spawn the robot in Gazebo
         Node(
-            package='ros_gz_sim',
-            executable='create',
+            package='gazebo_ros',
+            executable='spawn_entity.py',
             name='spawn_pioneer',
-            arguments=['-name', 'pioneer3at', '-topic', 'robot_description', '-z', '0.051'],
+            arguments=['-entity', 'pioneer3at', '-topic', 'robot_description', '-z', '0.051'],
             output='screen'
         )
     ])
