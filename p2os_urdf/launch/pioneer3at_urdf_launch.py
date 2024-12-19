@@ -26,11 +26,11 @@ def generate_launch_description():
                 'tf_prefix': ''
             }]
         ),
-        # Node for p2os publisher
+        # Node for p2os wheel joint publisher
         Node(
             package='p2os_urdf',
             executable='p2os_publisher_3at',
-            name='publisher',
+            name='wheel_publisher',
             output='screen'
         )
     ])

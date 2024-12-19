@@ -27,7 +27,8 @@ def generate_launch_description():
                     package='p2os_driver',
                     executable='p2os_driver',
                     name='p2os_driver',
-                    parameters=[{'use_sonar': True}]
+                    parameters=[{'use_sonar': True},
+                                {'port': '/dev/ttyUSB0'}] # be sure this is the right port
                 )
             ],
             condition=IfCondition(LaunchConfiguration('P2OS_Driver'))

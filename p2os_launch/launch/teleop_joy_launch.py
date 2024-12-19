@@ -21,8 +21,10 @@ def generate_launch_description():
                 {'axis_vx': 1},
                 {'axis_vw': 2},
                 {'axis_vy': 0},
-                {'deadman_button': 5},
-                {'run_button': 4}
+                #{'deadman_button': 5}, #logitech F310 xbox mode - bumpers
+                #{'run_button': 4} #logitech F310 xbox mode - bumpers
+                {'deadman_button': 6}, #gamesir nova lite pc mode - left bumper
+                {'run_button': 6} #gamesir nova lite pc mode - left bumper
             ]
         ),
 
@@ -30,8 +32,8 @@ def generate_launch_description():
         Node(
             package='joy',
             executable='joy_node',
-            name='logitech_joy_controller',
+            name='joy_controller',
             #parameters=[joystick_config]
-            parameters = [{'dev': '/dev/input/js1'}]
+            parameters = [{'dev': '/dev/input/js0'}] #can override from command line, F310 is usually js1
         ),
     ])

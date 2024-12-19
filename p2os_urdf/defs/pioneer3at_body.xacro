@@ -5,10 +5,11 @@
        xmlns:interface="http://playerstage.sourceforge.net/gazebo/xmlschema/#interface"
        xmlns:xacro="http://ros.org/wiki/xacro"
 >
-
+<xacro:property name="prefix" value="${prefix:=''}" />
 
 <!-- Chassis -->
-	<link name="base_link">
+<xacro:macro name="p3at_chassis" params="prefix">
+	<link name="${prefix}base_link">
 		<inertial>
 			<mass value="10.0"/>
 			<origin xyz="0 0 0.177"/>
@@ -34,14 +35,14 @@
 		</collision>
 	</link>
 	
-	<gazebo reference="base_link">
+	<gazebo reference="${prefix}base_link">
 		<material value="Gazebo/Red"/>
 	</gazebo>
 
 
 
 <!-- Top -->
-	<link name="top_plate">
+	<link name="${prefix}top_plate">
 		<inertial>
 			<mass value="0.1"/>	
 			<origin xyz="-0.025 0 -0.223"/>
@@ -66,17 +67,17 @@
 			</geometry>
 		</collision>
 	</link>
-	<gazebo reference="top_plate">
+	<gazebo reference="${prefix}top_plate">
 		<material value="Gazebo/Black"/>
 	</gazebo>
 
-	<joint name="base_top_joint" type="fixed">
+	<joint name="${prefix}base_top_joint" type="fixed">
 		<origin xyz="0.003 0 0.274" rpy="0 0 0"/>
-		<parent link="base_link"/>
-		<child link="top_plate"/>
+		<parent link="${prefix}base_link"/>
+		<child link="${prefix}top_plate"/>
 	</joint>
 <!-- Front + Back Sonar -->
-	<link name="front_sonar">
+	<link name="${prefix}front_sonar">
 		<inertial>
 			<mass value="0.1"/>	
 			<origin xyz="0 0 0"/>
@@ -94,17 +95,17 @@
 		</visual>
 
 	</link>
-	<gazebo reference="front_sonar">
+	<gazebo reference="${prefix}front_sonar">
 		<material value="Gazebo/Yellow"/>
 	</gazebo>
 
-	<joint name="base_front_joint" type="fixed">
+	<joint name="${prefix}base_front_joint" type="fixed">
 		<origin xyz="0.193 0 0.25" rpy="0 0 0"/>
-		<parent link="base_link"/>
-		<child link="front_sonar"/>
+		<parent link="${prefix}base_link"/>
+		<child link="${prefix}front_sonar"/>
 	</joint>
 
-	<link name="back_sonar">
+	<link name="${prefix}back_sonar">
 		<inertial>
 			<mass value="0.1"/>	
 			<origin xyz="0 0 0"/>
@@ -121,19 +122,20 @@
 			</material>
 		</visual>
 	</link>
-	<gazebo reference="back_sonar">
+	<gazebo reference="${prefix}back_sonar">
 		<material value="Gazebo/Yellow"/>
 	</gazebo>
 
-	<joint name="base_back_joint" type="fixed">
+	<joint name="${prefix}base_back_joint" type="fixed">
 		<origin xyz="-0.187 0 0.247" rpy="0 0 0"/>
-		<parent link="base_link"/>
-		<child link="back_sonar"/>
+		<parent link="${prefix}base_link"/>
+		<child link="${prefix}back_sonar"/>
 	</joint>
+</xacro:macro> <!-- End of Chassis -->
 
 <!-- Front Axles + Wheels + Hubcaps -->
-<xacro:macro name="p3at_front" params="suffix reflect">
-	<link name="p3at_front_${suffix}_axle">
+<xacro:macro name="p3at_front" params="prefix suffix reflect">
+	<link name="${prefix}p3at_front_${suffix}_axle">
 		<inertial>
 			<mass value="0.1"/>	
 			<origin xyz="0 0 0"/>
@@ -157,17 +159,17 @@
 		</geometry>
 	</collision>
 	</link>
-	<gazebo reference="p3at_front_${suffix}_axle">
+	<gazebo reference="${prefix}p3at_front_${suffix}_axle">
 		<material value="Gazebo/Grey"/>
 	</gazebo>
 
-	<joint name="base_front_${suffix}_axle_joint" type="fixed">
+	<joint name="${prefix}base_front_${suffix}_axle_joint" type="fixed">
 		<origin xyz="0.135 ${reflect*0.156} 0.111" rpy="0 0 0"/>
-		<parent link="base_link"/>
-		<child link="p3at_front_${suffix}_axle"/>
+		<parent link="${prefix}base_link"/>
+		<child link="${prefix}p3at_front_${suffix}_axle"/>
 	</joint>
 
-	<link name="p3at_front_${suffix}_hub">
+	<link name="${prefix}p3at_front_${suffix}_hub">
 		<inertial>
 			<mass value="0.1"/>	
 			<origin xyz="0 0 0"/>
@@ -190,17 +192,17 @@
 		</geometry>
 	</collision>
 	</link>
-	<gazebo reference="p3at_front_${suffix}_hub">
+	<gazebo reference="${prefix}p3at_front_${suffix}_hub">
 		<material value="Gazebo/Yellow"/>
 	</gazebo>
 
-	<joint name="base_front_${suffix}_hub_joint" type="fixed">
+	<joint name="${prefix}base_front_${suffix}_hub_joint" type="fixed">
 		<origin xyz="0 ${reflect*0.041} 0" rpy="0 0 0"/>
-		<parent link="p3at_front_${suffix}_axle"/>
-		<child link="p3at_front_${suffix}_hub"/>
+		<parent link="${prefix}p3at_front_${suffix}_axle"/>
+		<child link="${prefix}p3at_front_${suffix}_hub"/>
 	</joint>
 
-	<link name="p3at_front_${suffix}_wheel">
+	<link name="${prefix}p3at_front_${suffix}_wheel">
 		<inertial>
 			<mass value="0.5"/>	
 			<origin xyz="0 0 0"/>
@@ -224,23 +226,23 @@
 		</geometry>
 	</collision>
 	</link>
-	<gazebo reference="p3at_front_${suffix}_wheel">
+	<gazebo reference="${prefix}p3at_front_${suffix}_wheel">
 		<material value="Gazebo/Black"/>
 	</gazebo>
 
-	<joint name="p3at_front_${suffix}_wheel_joint" type="continuous">
+	<joint name="${prefix}p3at_front_${suffix}_wheel_joint" type="continuous">
   	<axis xyz="0 1 0"/>
     <anchor xyz="0 0 0"/>
     <limit effort="100" velocity="100" />
     <joint_properties damping="0.7"/>
 		<origin xyz="0 0 0" rpy="0 0 0"/>
-		<parent link="p3at_front_${suffix}_hub"/>
-		<child link="p3at_front_${suffix}_wheel"/>
+		<parent link="${prefix}p3at_front_${suffix}_hub"/>
+		<child link="${prefix}p3at_front_${suffix}_wheel"/>
 	</joint>
 </xacro:macro>
 <!-- Back Axles + Wheels + Hubcaps -->
-<xacro:macro name="p3at_back" params="suffix reflect">
-	<link name="p3at_back_${suffix}_axle">
+<xacro:macro name="p3at_back" params="prefix suffix reflect">
+	<link name="${prefix}p3at_back_${suffix}_axle">
 		<inertial>
 			<mass value="0.1"/>	
 			<origin xyz="0 0 0"/>
@@ -264,18 +266,18 @@
 		</geometry>
 	</collision>
 	</link>
-	<gazebo reference="p3at_back_${suffix}_axle">
+	<gazebo reference="${prefix}p3at_back_${suffix}_axle">
 		<material value="Gazebo/Grey"/>
 	</gazebo>
 
-	<joint name="bp3at_back_${suffix}_axle_joint" type="fixed">
+	<joint name="${prefix}bp3at_back_${suffix}_axle_joint" type="fixed">
 		<origin xyz="-0.134 ${reflect*0.156} 0.111" rpy="0 0 0"/>
-		<parent link="base_link"/>
-		<child link="p3at_back_${suffix}_axle"/>
+		<parent link="${prefix}base_link"/>
+		<child link="${prefix}p3at_back_${suffix}_axle"/>
 	</joint>
 
 
-	<link name="p3at_back_${suffix}_hub">
+	<link name="${prefix}p3at_back_${suffix}_hub">
 		<inertial>
 			<mass value="0.1"/>	
 			<origin xyz="0 0 0"/>
@@ -296,17 +298,17 @@
 		</geometry>
 	</collision>
 	</link>
-	<gazebo reference="p3at_back_${suffix}_hub">
+	<gazebo reference="${prefix}p3at_back_${suffix}_hub">
 		<material value="Gazebo/Yellow"/>
 	</gazebo>
 
-	<joint name="p3at_back_${suffix}_hub_joint" type="fixed">
+	<joint name="${prefix}p3at_back_${suffix}_hub_joint" type="fixed">
 		<origin xyz="-0 ${reflect*0.041} 0" rpy="0 0 0"/>
-		<parent link="p3at_back_${suffix}_axle"/>
-		<child link="p3at_back_${suffix}_hub"/>
+		<parent link="${prefix}p3at_back_${suffix}_axle"/>
+		<child link="${prefix}p3at_back_${suffix}_hub"/>
 	</joint>
 
-	<link name="p3at_back_${suffix}_wheel">
+	<link name="${prefix}p3at_back_${suffix}_wheel">
 		<inertial>
 			<mass value="0.5"/>	
 			<origin xyz="0 0 0"/>
@@ -328,21 +330,21 @@
 		</geometry>
 	</collision>
 	</link>
-	<gazebo reference="p3at_back_${suffix}_wheel">
+	<gazebo reference="${prefix}p3at_back_${suffix}_wheel">
 		<material value="Gazebo/Black"/>
 	</gazebo>
 
-	<joint name="p3at_back_${suffix}_wheel_joint" type="continuous">
+	<joint name="${prefix}p3at_back_${suffix}_wheel_joint" type="continuous">
 	  <axis xyz="0 1 0"/>
     <anchor xyz="0 0 0"/>
     <limit effort="100" velocity="100" />
     <joint_properties damping="0.7"/>
 		<origin xyz="0 0 0" rpy="0 0 0"/>
-		<parent link="p3at_back_${suffix}_hub"/>
-		<child link="p3at_back_${suffix}_wheel"/>
+		<parent link="${prefix}p3at_back_${suffix}_hub"/>
+		<child link="${prefix}p3at_back_${suffix}_wheel"/>
 	</joint>
 	
-  <gazebo reference="p3at_back_${suffix}_wheel">
+  <gazebo reference="${prefix}p3at_back_${suffix}_wheel">
     <kp>1000000.0</kp> <!-- kp and kd for rubber -->
     <kd>100.0</kd>
     <mu1>10.0</mu1>
@@ -352,7 +354,7 @@
     <minDepth>0.00</minDepth>
   </gazebo>
   
-  <gazebo reference="p3at_front_${suffix}_wheel">
+  <gazebo reference="${prefix}p3at_front_${suffix}_wheel">
     <kp>1000000.0</kp> <!-- kp and kd for rubber -->
     <kd>100.0</kd>
     <mu1>10.0</mu1>
@@ -365,7 +367,7 @@
 </xacro:macro>
 
 
-<xacro:macro name="p3at_gazebo_ext">
+<xacro:macro name="p3at_gazebo_ext" params="prefix">
 
 <gazebo>
   <plugin

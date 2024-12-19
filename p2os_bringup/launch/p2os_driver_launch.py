@@ -8,10 +8,11 @@ def generate_launch_description():
             executable='p2os_driver',
             name='p2os_driver',
             remappings=[
-                ('/pose', '/odom')
+                ('pose', 'odom')
             ],
             parameters=[
-                {'use_sonar': False}
+                {'use_sonar': False},
+                {'port': '/dev/ttyUSB0'} #make sure this is the right port
             ],
             arguments=['--ros-args', '--log-level', 'INFO']
         ),            

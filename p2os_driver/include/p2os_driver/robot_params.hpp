@@ -220,7 +220,7 @@ enum P2OSCommand
 #define CMUCAM_IMAGE_HEIGHT 143
 #define CMUCAM_MESSAGE_LEN  10
 
-/* conection stuff */
+/* connection stuff */
 #define DEFAULT_P2OS_PORT "/dev/ttyUSB0"
 #define DEFAULT_P2OS_TCP_REMOTE_HOST "localhost"
 #define DEFAULT_P2OS_TCP_REMOTE_PORT 8101

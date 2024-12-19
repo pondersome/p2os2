@@ -6,14 +6,16 @@
        xmlns:xacro="http://ros.org/wiki/xacro"
 name="pioneer3at">
 
+<!-- Declare Arguments with Default Values -->
+<xacro:arg name="prefix" default=""/>
 <xacro:include filename="$(find p2os_urdf)/defs/pioneer3at_body.xacro"/>
 
-
-<xacro:p3at_front suffix="left" reflect="1"/>
-<xacro:p3at_front suffix="right" reflect="-1"/>
-<xacro:p3at_back suffix="left" reflect="1"/>
-<xacro:p3at_back suffix="right" reflect="-1"/>
-<xacro:p3at_gazebo_ext/>
+<xacro:p3at_chassis prefix="$(arg prefix)"/>
+<xacro:p3at_front prefix="$(arg prefix)" suffix="left" reflect="1"/>
+<xacro:p3at_front prefix="$(arg prefix)" suffix="right" reflect="-1"/>
+<xacro:p3at_back prefix="$(arg prefix)" suffix="left" reflect="1"/>
+<xacro:p3at_back prefix="$(arg prefix)" suffix="right" reflect="-1"/>
+<xacro:p3at_gazebo_ext prefix="$(arg prefix)"/>
 
 
 </robot>
