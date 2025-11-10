@@ -53,7 +53,7 @@ P2OSNode::P2OSNode(const std::string & node_name)
 
   //n_private.param(std::string("base_link_frame_id"), base_link_frame_id, std::string("base_link"));
   this->declare_parameter<std::string>("base_link_frame_id", "base_link");
-  this->get_parameter("base_link_frame_id", odom_frame_id);
+  this->get_parameter("base_link_frame_id", base_link_frame_id);
   // Use sonar
   //n_private.param("use_sonar", use_sonar_, false);
   this->declare_parameter<bool>("use_sonar", false);
