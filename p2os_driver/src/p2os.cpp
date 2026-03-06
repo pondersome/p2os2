@@ -67,6 +67,9 @@ P2OSNode::P2OSNode(const std::string & node_name)
   //n_private.param("pulse", pulse, -1.0);
   this->declare_parameter<double>("pulse", -1.0);
   this->get_parameter("pulse", pulse);
+  // baud rate: 0 = use robot params table default, or explicit value (9600/19200/38400/57600/115200)
+  this->declare_parameter<int>("baud_rate", 0);
+  this->get_parameter("baud_rate", requested_baud_rate);
   //desired_freq = 10;
   this->declare_parameter<double>("desired_freq", 10);
   this->get_parameter("desired_freq", desired_freq);
@@ -576,6 +579,70 @@ int P2OSNode::Setup()
     param_idx = 0;
   }
 
+  // Switch to a higher baud rate if configured
+  {
+    int target_baud = (this->requested_baud_rate > 0)
+      ? this->requested_baud_rate
+      : PlayerRobotParams[param_idx].SwitchToBaudRate;
+    // Map baud rates to HOSTBAUD command arguments and termios constants
+    struct { int rate; int arg; speed_t termios; } baud_map[] = {
+      {9600,   0, B9600},
+      {19200,  1, B19200},
+      {38400,  2, B38400},
+      {57600,  3, B57600},
+      {115200, 4, B115200},
+    };
+    int hostbaud_arg = -1;
+    speed_t new_termios_baud = B9600;
+    for (auto & entry : baud_map) {
+      if (entry.rate == target_baud) {
+        hostbaud_arg = entry.arg;
+        new_termios_baud = entry.termios;
+        break;
+      }
+    }
+    speed_t current_baud = cfgetispeed(&term);
+    if (hostbaud_arg > 0 && new_termios_baud != current_baud) {
+      RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"),
+        "Switching baud rate from current to %d...", target_baud);
+      // Tell the firmware to switch
+      unsigned char baud_command[4];
+      baud_command[0] = HOSTBAUD;
+      baud_command[1] = ARGINT;
+      baud_command[2] = hostbaud_arg & 0x00FF;
+      baud_command[3] = (hostbaud_arg & 0xFF00) >> 8;
+      P2OSPacket baud_packet;
+      baud_packet.Build(baud_command, 4);
+      baud_packet.Send(this->psos_fd);
+      // Wait for the firmware to reconfigure its UART
+      rclcpp::sleep_for(std::chrono::milliseconds(300));
+      // Switch the host side to match
+      cfsetispeed(&term, new_termios_baud);
+      cfsetospeed(&term, new_termios_baud);
+      if (tcsetattr(this->psos_fd, TCSAFLUSH, &term) < 0) {
+        RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"),
+          "Failed to set host baud rate to %d", target_baud);
+      } else {
+        // Verify communication at new baud rate
+        command = PULSE;
+        packet.Build(&command, 1);
+        packet.Send(this->psos_fd);
+        rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
+        if (receivedpacket.Receive(this->psos_fd)) {
+          RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"),
+            "No response at %d baud — falling back to previous rate", target_baud);
+          // Revert host side to the rate that worked during sync
+          cfsetispeed(&term, bauds[currbaud]);
+          cfsetospeed(&term, bauds[currbaud]);
+          tcsetattr(this->psos_fd, TCSAFLUSH, &term);
+        } else {
+          RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"),
+            "Baud rate switched to %d successfully", target_baud);
+        }
+      }
+    }
+  }
+
   // first, receive a packet so we know we're connected.
   if (!sippacket) {
     sippacket = new SIP(param_idx);
@@ -595,6 +662,7 @@ int P2OSNode::Setup()
   P2OSPacket accel_packet;
   unsigned char accel_command[4];
   if (this->motor_max_trans_accel > 0) {
+    RCLCPP_INFO(this->get_logger(), "Setting trans accel: %d mm/s^2", this->motor_max_trans_accel);
     accel_command[0] = SETA;
     accel_command[1] = ARGINT;
     accel_command[2] = this->motor_max_trans_accel & 0x00FF;
@@ -603,15 +671,17 @@ int P2OSNode::Setup()
     this->SendReceive(&accel_packet, false);
   }
 
-  if (this->motor_max_trans_decel < 0) {
+  if (this->motor_max_trans_decel > 0) {
+    RCLCPP_INFO(this->get_logger(), "Setting trans decel: %d mm/s^2", this->motor_max_trans_decel);
     accel_command[0] = SETA;
     accel_command[1] = ARGNINT;
-    accel_command[2] = -1 * (this->motor_max_trans_decel) & 0x00FF;
-    accel_command[3] = (-1 * (this->motor_max_trans_decel) & 0xFF00) >> 8;
+    accel_command[2] = this->motor_max_trans_decel & 0x00FF;
+    accel_command[3] = (this->motor_max_trans_decel & 0xFF00) >> 8;
     accel_packet.Build(accel_command, 4);
     this->SendReceive(&accel_packet, false);
   }
   if (this->motor_max_rot_accel > 0) {
+    RCLCPP_INFO(this->get_logger(), "Setting rot accel: %d deg/s^2", this->motor_max_rot_accel);
     accel_command[0] = SETRA;
     accel_command[1] = ARGINT;
     accel_command[2] = this->motor_max_rot_accel & 0x00FF;
@@ -619,11 +689,12 @@ int P2OSNode::Setup()
     accel_packet.Build(accel_command, 4);
     this->SendReceive(&accel_packet, false);
   }
-  if (this->motor_max_rot_decel < 0) {
+  if (this->motor_max_rot_decel > 0) {
+    RCLCPP_INFO(this->get_logger(), "Setting rot decel: %d deg/s^2", this->motor_max_rot_decel);
     accel_command[0] = SETRA;
     accel_command[1] = ARGNINT;
-    accel_command[2] = -1 * (this->motor_max_rot_decel) & 0x00FF;
-    accel_command[3] = (-1 * (this->motor_max_rot_decel) & 0xFF00) >> 8;
+    accel_command[2] = this->motor_max_rot_decel & 0x00FF;
+    accel_command[3] = (this->motor_max_rot_decel & 0xFF00) >> 8;
     accel_packet.Build(accel_command, 4);
     this->SendReceive(&accel_packet, false);
   }

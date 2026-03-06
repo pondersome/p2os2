@@ -204,6 +204,8 @@ protected:
   int16_t motor_max_rot_accel;
   //! Minimum rotational acceleration in Meters per second per second.
   int16_t motor_max_rot_decel;
+  //! Requested baud rate (0 = use robot params default)
+  int requested_baud_rate;
   //! Pulse time
   double pulse;
   double desired_freq;
