@@ -60,12 +60,12 @@ class TeleopBase : public rclcpp::Node
 public:
     geometry_msgs::msg::Twist cmd, passthrough_cmd;
     double req_vx, req_vy, req_vw;
-    double max_vx, max_vy, max_vw, max_vx_run, max_vy_run, max_vw_run;
+    double max_vx, max_vy, max_vw, max_vx_turbo, max_vy_turbo, max_vw_turbo;
     int axis_vx, axis_vy, axis_vw;
-    int deadman_button, run_button;
+    int deadman_button, turbo_button;
     bool deadman_no_publish_;
     bool deadman_;
-    bool running_;
+    bool turbo_;
     rclcpp::Time last_received_joy_message_time_;
     rclcpp::Duration joy_msg_timeout_{-1,0};
 
@@ -74,32 +74,33 @@ public:
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr passthrough_sub_;
 
     TeleopBase(bool deadman_no_publish = false)
-    : Node("p2os_teleop"), deadman_no_publish_(deadman_no_publish), running_(false)
+    : Node("p2os_teleop"), deadman_no_publish_(deadman_no_publish), turbo_(false)
     {
         this->declare_parameter<double>("max_vx", 0.6);
         this->declare_parameter<double>("max_vy", 0.6);
         this->declare_parameter<double>("max_vw", 0.8);
-        this->declare_parameter<double>("max_vx_run", 0.6);
-        this->declare_parameter<double>("max_vy_run", 0.6);
-        this->declare_parameter<double>("max_vw_run", 0.8);
+        this->declare_parameter<double>("max_vx_turbo", 0.6);
+        this->declare_parameter<double>("max_vy_turbo", 0.6);
+        this->declare_parameter<double>("max_vw_turbo", 0.8);
         this->declare_parameter<int>("axis_vx", 3);
         this->declare_parameter<int>("axis_vw", 0);
         this->declare_parameter<int>("axis_vy", 2);
         this->declare_parameter<int>("deadman_button", 0);
-        this->declare_parameter<int>("run_button", 0);
+        this->declare_parameter<int>("turbo_button", 0);
         this->declare_parameter<double>("joy_msg_timeout", -1.0);
+        this->declare_parameter<int>("teleop_rate", 10);
 
         max_vx = this->get_parameter("max_vx").as_double();
         max_vy = this->get_parameter("max_vy").as_double();
         max_vw = this->get_parameter("max_vw").as_double();
-        max_vx_run = this->get_parameter("max_vx_run").as_double();
-        max_vy_run = this->get_parameter("max_vy_run").as_double();
-        max_vw_run = this->get_parameter("max_vw_run").as_double();
+        max_vx_turbo = this->get_parameter("max_vx_turbo").as_double();
+        max_vy_turbo = this->get_parameter("max_vy_turbo").as_double();
+        max_vw_turbo = this->get_parameter("max_vw_turbo").as_double();
         axis_vx = this->get_parameter("axis_vx").as_int();
         axis_vw = this->get_parameter("axis_vw").as_int();
         axis_vy = this->get_parameter("axis_vy").as_int();
         deadman_button = this->get_parameter("deadman_button").as_int();
-        run_button = this->get_parameter("run_button").as_int();
+        turbo_button = this->get_parameter("turbo_button").as_int();
         double joy_msg_timeout = this->get_parameter("joy_msg_timeout").as_double();
 
         if (joy_msg_timeout <= 0)
@@ -134,10 +135,10 @@ public:
 
         last_received_joy_message_time_ = this->now();
 
-        running_ = (static_cast<size_t>(run_button) < joy_msg->buttons.size()) && joy_msg->buttons[run_button];
-        double vx = running_ ? max_vx_run : max_vx;
-        double vy = running_ ? max_vy_run : max_vy;
-        double vw = running_ ? max_vw_run : max_vw;
+        turbo_ = (static_cast<size_t>(turbo_button) < joy_msg->buttons.size()) && joy_msg->buttons[turbo_button];
+        double vx = turbo_ ? max_vx_turbo : max_vx;
+        double vy = turbo_ ? max_vy_turbo : max_vy;
+        double vw = turbo_ ? max_vw_turbo : max_vw;
 
         if ((axis_vx >= 0) && (static_cast<size_t>(axis_vx) < joy_msg->axes.size()))
             req_vx = joy_msg->axes[axis_vx] * vx;
@@ -145,11 +146,14 @@ public:
             req_vy = joy_msg->axes[axis_vy] * vy;
         if ((axis_vw >= 0) && (static_cast<size_t>(axis_vw) < joy_msg->axes.size()))
             req_vw = joy_msg->axes[axis_vw] * vw;
+
+        // Publish immediately on new joy data to minimize latency
+        send_cmd_vel();
     }
 
     void send_cmd_vel()
     {
-        if (deadman_ && (last_received_joy_message_time_ + joy_msg_timeout_ > this->now()) && running_) {
+        if (deadman_ && (last_received_joy_message_time_ + joy_msg_timeout_ > this->now())) {
             cmd.linear.x = req_vx;
             cmd.linear.y = req_vy;
             cmd.angular.z = req_vw;
@@ -166,7 +170,9 @@ int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<TeleopBase>(std::find(argv, argv + argc, std::string("--deadman_no_publish")) != argv + argc);
-    rclcpp::Rate rate(10); // 10 Hz
+    int teleop_rate = node->get_parameter("teleop_rate").as_int();
+    RCLCPP_INFO(node->get_logger(), "Teleop loop rate: %d Hz", teleop_rate);
+    rclcpp::Rate rate(teleop_rate);
 
     while (rclcpp::ok())
     {
