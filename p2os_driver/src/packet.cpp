@@ -26,7 +26,20 @@
 #include <p2os_driver/packet.hpp>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/select.h>
 #include "rclcpp/rclcpp.hpp"
+
+// Wait for data on fd with timeout. Returns 1 if ready, 0 if timeout, -1 on error.
+static int wait_for_data(int fd, int timeout_ms)
+{
+  fd_set rfds;
+  struct timeval tv;
+  FD_ZERO(&rfds);
+  FD_SET(fd, &rfds);
+  tv.tv_sec = timeout_ms / 1000;
+  tv.tv_usec = (timeout_ms % 1000) * 1000;
+  return select(fd + 1, &rfds, NULL, NULL, &tv);
+}
 
 void P2OSPacket::Print()
 {
@@ -76,7 +89,7 @@ int P2OSPacket::CalcChkSum()
   return c;
 }
 
-int P2OSPacket::Receive(int fd)
+int P2OSPacket::Receive(int fd, int timeout_ms)
 {
   unsigned char prefix[3];
   int cnt;
@@ -87,44 +100,75 @@ int P2OSPacket::Receive(int fd)
     ::memset(prefix, 0, sizeof(prefix));
 
     while (1) {
-      cnt = 0;
-      while (cnt != 1) {
-        if ((cnt += read(fd, &prefix[2], 1)) < 0) {
-          RCLCPP_ERROR(logger_, 
-            "Error reading packet header from robot connection: P2OSPacket():Receive():read():");
+      if (timeout_ms > 0) {
+        // Interruptible mode: use select() so we can check for shutdown
+        if (!rclcpp::ok()) {
+          return 2;
+        }
+        int ready = wait_for_data(fd, timeout_ms);
+        if (ready == 0) { continue; }  // timeout, loop to check rclcpp::ok()
+        if (ready < 0) {
+          if (errno == EINTR) { continue; }
+          RCLCPP_ERROR(logger_, "select() error in Receive(): %s", strerror(errno));
           return 1;
         }
       }
 
+      cnt = read(fd, &prefix[2], 1);
+      if (cnt < 0) {
+        int saved_errno = errno;
+        if (saved_errno == EINTR) { continue; }
+        // EAGAIN is expected when timeout_ms=0 (non-blocking SYNC); retry when using select()
+        if ((saved_errno == EAGAIN || saved_errno == EWOULDBLOCK) && timeout_ms > 0) { continue; }
+        // During SYNC0 the fd is O_NONBLOCK, so EAGAIN just means no data yet — not an error
+        if (saved_errno == EAGAIN || saved_errno == EWOULDBLOCK) { return 1; }
+        RCLCPP_ERROR(logger_,
+          "Error reading packet header from robot connection: %s",
+          strerror(saved_errno));
+        return 1;
+      }
+      if (cnt == 0) {
+        continue;
+      }
+
       if (prefix[0] == 0xFA && prefix[1] == 0xFB) {
-        timestamp = clock_.now();
-        // Convert the time to a string if logging timestamp
-        //std::string time_str = std::to_string(timestamp.seconds());
-        // Log the time string
-        //RCLCPP_DEBUG(logger_, "Time after receive packet parse: %s", time_str.c_str());
+        auto now = std::chrono::system_clock::now().time_since_epoch();
+        auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+        timestamp = rclcpp::Time(ns, RCL_SYSTEM_TIME);
         break;
       }
 
-
-
-      // GlobalTime->GetTimeDouble(&timestamp);
-
       prefix[0] = prefix[1];
       prefix[1] = prefix[2];
-      // skipped++;
     }
-    // if (skipped>3) RCLCPP_INFO(node_->get_logger(), "Skipped %d bytes\n", skipped);
 
     size = prefix[2] + 3;
     memcpy(packet, prefix, 3);
 
     cnt = 0;
     while (cnt != prefix[2]) {
-      if ((cnt += read(fd, &packet[3 + cnt], prefix[2] - cnt)) < 0) {
-        RCLCPP_ERROR(logger_, 
-          "Error reading packet body from robot connection: P2OSPacket():Receive():read():");
+      if (timeout_ms > 0) {
+        if (!rclcpp::ok()) {
+          return 2;
+        }
+        int ready = wait_for_data(fd, timeout_ms);
+        if (ready == 0) { continue; }
+        if (ready < 0) {
+          if (errno == EINTR) { continue; }
+          RCLCPP_ERROR(logger_, "select() error in Receive() body: %s", strerror(errno));
+          return 1;
+        }
+      }
+
+      int n = read(fd, &packet[3 + cnt], prefix[2] - cnt);
+      if (n < 0) {
+        if (errno == EINTR) { continue; }
+        if ((errno == EAGAIN || errno == EWOULDBLOCK) && timeout_ms > 0) { continue; }
+        RCLCPP_ERROR(logger_,
+          "Error reading packet body from robot connection: %s", strerror(errno));
         return 1;
       }
+      cnt += n;
     }
   } while (!Check());
   return 0;

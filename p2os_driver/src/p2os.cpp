@@ -465,7 +465,7 @@ int P2OSNode::Setup()
     //usleep(P2OS_CYCLETIME_USEC);
     rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
 
-    if (receivedpacket.Receive(this->psos_fd)) {
+    if (receivedpacket.Receive(this->psos_fd, 0)) {
       if ((psos_state == NO_SYNC) && (num_sync_attempts >= 0)) {
         num_sync_attempts--;
         //usleep(P2OS_CYCLETIME_USEC);
@@ -628,7 +628,7 @@ int P2OSNode::Setup()
         packet.Build(&command, 1);
         packet.Send(this->psos_fd);
         rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
-        if (receivedpacket.Receive(this->psos_fd)) {
+        if (receivedpacket.Receive(this->psos_fd, 0)) {
           RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"),
             "No response at %d baud — falling back to previous rate", target_baud);
           // Revert host side to the rate that worked during sync
@@ -787,34 +787,38 @@ int P2OSNode::Setup()
 
 int P2OSNode::Shutdown()
 {
-  unsigned char command[20], buffer[20];
-  P2OSPacket packet;
-
   if (ptz_.isOn()) {
     ptz_.shutdown();
   }
-
-  memset(buffer, 0, 20);
 
   if (this->psos_fd == -1) {
     return -1;
   }
 
-  command[0] = STOP;
-  packet.Build(command, 1);
-  packet.Send(this->psos_fd);
-  //usleep(P2OS_CYCLETIME_USEC);
-  rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
+  // Send STOP and CLOSE directly without creating rclcpp objects,
+  // since the rclcpp context may already be shut down by the signal handler.
+  // Packet format: 0xFA 0xFB <len> <command> <checksum-hi> <checksum-lo>
+  auto send_command = [this](unsigned char cmd) {
+    unsigned char pkt[6];
+    pkt[0] = 0xFA;
+    pkt[1] = 0xFB;
+    pkt[2] = 3;  // payload: command + 2 checksum bytes
+    pkt[3] = cmd;
+    // Checksum for single-byte payload: the byte XOR'd
+    int chksum = cmd;
+    pkt[4] = (chksum >> 8) & 0xFF;
+    pkt[5] = chksum & 0xFF;
+    write(this->psos_fd, pkt, 6);
+    usleep(P2OS_CYCLETIME_USEC);
+  };
 
-  command[0] = CLOSE;
-  packet.Build(command, 1);
-  packet.Send(this->psos_fd);
-  //usleep(P2OS_CYCLETIME_USEC);
-  rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
+  send_command(STOP);
+  send_command(CLOSE);
 
   close(this->psos_fd);
   this->psos_fd = -1;
-  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "P2OS has been shutdown");
+  // Use fprintf since rclcpp logging may not be available
+  fprintf(stderr, "[P2OsDriver] P2OS has been shutdown\n");
   delete this->sippacket;
   this->sippacket = NULL;
 
@@ -874,10 +878,14 @@ int P2OSNode::SendReceive(P2OSPacket * pkt, bool publish_data)
     }
 
     /* receive a packet */
-    pthread_testcancel();
-    if (packet.Receive(this->psos_fd)) {
-      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "RunPsosThread(): Receive errored");
-      pthread_exit(NULL);
+    int recv_result = packet.Receive(this->psos_fd);
+    if (recv_result == 2) {
+      // Shutdown requested — return cleanly so main loop can exit and call Shutdown()
+      return 0;
+    }
+    if (recv_result != 0) {
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "SendReceive(): Receive error");
+      return -1;
     }
 
     const bool packet_check =

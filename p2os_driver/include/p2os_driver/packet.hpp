@@ -23,6 +23,7 @@
 #define P2OS_DRIVER__PACKET_HPP_
 #include "rclcpp/rclcpp.hpp"
 
+#include <chrono>
 #include <cstring>
 
 namespace
@@ -34,21 +35,10 @@ class P2OSPacket
 {
 private:
      rclcpp::Logger logger_;
-     rclcpp::Clock clock_;
 public:
-  //P2OSPacket(rclcpp::Node::SharedPtr node) : node_(node) {} //i think the magical ros tool thought this was supposed to be a node
-  P2OSPacket() : logger_(rclcpp::get_logger("p2os_driver")), clock_(RCL_ROS_TIME) {
-    // Debug: Print the current time to check clock initialization
-    // Get the current time
-    rclcpp::Time current_time = clock_.now();
-
-    // Convert the time to a string
-    //std::string time_str = std::to_string(current_time.seconds());
-    // Log the time string
-    //RCLCPP_DEBUG(logger_, "Time at packet allocation: %s", time_str.c_str());
+  P2OSPacket() : logger_(rclcpp::get_logger("p2os_driver")) {
   }
 
-  //rclcpp::Node::SharedPtr node_; //seems like this is only used to get a logger connected to the node that instantiated the packet?
   unsigned char packet[packet_len];
   unsigned char size;
   rclcpp::Time timestamp;
@@ -59,7 +49,7 @@ public:
   void PrintHex();
   int Build(unsigned char * data, unsigned char datasize);
   int Send(int fd);
-  int Receive(int fd);
+  int Receive(int fd, int timeout_ms = 500);
   bool Check();
 
   bool operator!=(P2OSPacket p)

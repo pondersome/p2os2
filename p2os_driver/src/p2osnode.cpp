@@ -49,6 +49,8 @@ int main(int argc, char ** argv)
     node->check_and_set_motor_state();
     node->check_and_set_gripper_state();
 
+    if (!rclcpp::ok()) { break; }
+
     if (node->get_pulse() > 0) {
       rclcpp::Time currentTime = node->now();
       rclcpp::Duration pulseInterval = currentTime - lastTime;
@@ -64,16 +66,21 @@ int main(int argc, char ** argv)
     // never send data back to clients. We need a better way of doing regular
     // checks of the serial port - peek in sendreceive, maybe? Because if there
     // is no data waiting this will sit around waiting until one comes
-    node->SendReceive(NULL, true);
+    int sr = node->SendReceive(NULL, true);
+    if (sr < 0) {
+      RCLCPP_ERROR(rclcpp::get_logger("P2OsDriver"), "Serial communication error, shutting down");
+      break;
+    }
+    if (!rclcpp::ok()) { break; }
     //node->updateDiagnostics();
     rclcpp::spin_some(node);
   }
 
-  if (!node->Shutdown()) {
-    RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"), "p2os shutdown failed... your robot might be heading for the wall?");
-  }
-  //delete p; //std::shared_ptr knows how to cleanup itself
+  node->Shutdown();
 
   RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "Quitting... ");
+  if (rclcpp::ok()) {
+    rclcpp::shutdown();
+  }
   return 0;
 }
