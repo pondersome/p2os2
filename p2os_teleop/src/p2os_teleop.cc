@@ -62,10 +62,13 @@ public:
     double req_vx, req_vy, req_vw;
     double max_vx, max_vy, max_vw, max_vx_turbo, max_vy_turbo, max_vw_turbo;
     int axis_vx, axis_vy, axis_vw;
-    int deadman_button, turbo_button;
+    int deadman_button, turbo_button, crawl_button;
+    double crawl_speed;
     bool deadman_no_publish_;
     bool deadman_;
     bool turbo_;
+    bool crawl_active_;
+    bool crawl_button_prev_;
     rclcpp::Time last_received_joy_message_time_;
     rclcpp::Duration joy_msg_timeout_{-1,0};
 
@@ -74,7 +77,8 @@ public:
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr passthrough_sub_;
 
     TeleopBase(bool deadman_no_publish = false)
-    : Node("p2os_teleop"), deadman_no_publish_(deadman_no_publish), turbo_(false)
+    : Node("p2os_teleop"), deadman_no_publish_(deadman_no_publish),
+      turbo_(false), crawl_active_(false), crawl_button_prev_(false)
     {
         this->declare_parameter<double>("max_vx", 0.6);
         this->declare_parameter<double>("max_vy", 0.6);
@@ -87,6 +91,8 @@ public:
         this->declare_parameter<int>("axis_vy", 2);
         this->declare_parameter<int>("deadman_button", 0);
         this->declare_parameter<int>("turbo_button", 0);
+        this->declare_parameter<int>("crawl_button", 1);
+        this->declare_parameter<double>("crawl_speed", 0.05);
         this->declare_parameter<double>("joy_msg_timeout", -1.0);
         this->declare_parameter<int>("teleop_rate", 10);
 
@@ -101,6 +107,8 @@ public:
         axis_vy = this->get_parameter("axis_vy").as_int();
         deadman_button = this->get_parameter("deadman_button").as_int();
         turbo_button = this->get_parameter("turbo_button").as_int();
+        crawl_button = this->get_parameter("crawl_button").as_int();
+        crawl_speed = this->get_parameter("crawl_speed").as_double();
         double joy_msg_timeout = this->get_parameter("joy_msg_timeout").as_double();
 
         if (joy_msg_timeout <= 0)
@@ -135,17 +143,44 @@ public:
 
         last_received_joy_message_time_ = this->now();
 
+        // Crawl toggle: rising edge on crawl button
+        bool crawl_button_now = (static_cast<size_t>(crawl_button) < joy_msg->buttons.size()) && joy_msg->buttons[crawl_button];
+        if (crawl_button_now && !crawl_button_prev_) {
+            crawl_active_ = !crawl_active_;
+            RCLCPP_INFO(this->get_logger(), "Crawl mode %s (%.3f m/s)",
+                crawl_active_ ? "ON" : "OFF", crawl_speed);
+        }
+        crawl_button_prev_ = crawl_button_now;
+
+        // Compute joystick velocities (used for both normal mode and crawl cancellation)
         turbo_ = (static_cast<size_t>(turbo_button) < joy_msg->buttons.size()) && joy_msg->buttons[turbo_button];
         double vx = turbo_ ? max_vx_turbo : max_vx;
         double vy = turbo_ ? max_vy_turbo : max_vy;
         double vw = turbo_ ? max_vw_turbo : max_vw;
 
+        double joy_vx = 0.0, joy_vy = 0.0, joy_vw = 0.0;
         if ((axis_vx >= 0) && (static_cast<size_t>(axis_vx) < joy_msg->axes.size()))
-            req_vx = joy_msg->axes[axis_vx] * vx;
+            joy_vx = joy_msg->axes[axis_vx] * vx;
         if ((axis_vy >= 0) && (static_cast<size_t>(axis_vy) < joy_msg->axes.size()))
-            req_vy = joy_msg->axes[axis_vy] * vy;
+            joy_vy = joy_msg->axes[axis_vy] * vy;
         if ((axis_vw >= 0) && (static_cast<size_t>(axis_vw) < joy_msg->axes.size()))
-            req_vw = joy_msg->axes[axis_vw] * vw;
+            joy_vw = joy_msg->axes[axis_vw] * vw;
+
+        // Cancel crawl if stick-derived velocity exceeds crawl speed
+        if (crawl_active_ && (std::fabs(joy_vx) > crawl_speed || std::fabs(joy_vy) > crawl_speed || std::fabs(joy_vw) > crawl_speed)) {
+            crawl_active_ = false;
+            RCLCPP_INFO(this->get_logger(), "Crawl cancelled by stick input");
+        }
+
+        if (crawl_active_) {
+            req_vx = crawl_speed;
+            req_vy = 0.0;
+            req_vw = 0.0;
+        } else {
+            req_vx = joy_vx;
+            req_vy = joy_vy;
+            req_vw = joy_vw;
+        }
 
         // Publish immediately on new joy data to minimize latency
         send_cmd_vel();
