@@ -62,13 +62,15 @@ public:
     double req_vx, req_vy, req_vw;
     double max_vx, max_vy, max_vw, max_vx_turbo, max_vy_turbo, max_vw_turbo;
     int axis_vx, axis_vy, axis_vw;
-    int deadman_button, turbo_button, crawl_button;
+    int deadman_button, turbo_button, crawl_button, reverse_crawl_button;
     double crawl_speed;
     bool deadman_no_publish_;
     bool deadman_;
     bool turbo_;
     bool crawl_active_;
     bool crawl_button_prev_;
+    bool reverse_crawl_active_;
+    bool reverse_crawl_button_prev_;
     rclcpp::Time last_received_joy_message_time_;
     rclcpp::Duration joy_msg_timeout_{-1,0};
 
@@ -78,7 +80,8 @@ public:
 
     TeleopBase(bool deadman_no_publish = false)
     : Node("p2os_teleop"), deadman_no_publish_(deadman_no_publish),
-      turbo_(false), crawl_active_(false), crawl_button_prev_(false)
+      turbo_(false), crawl_active_(false), crawl_button_prev_(false),
+      reverse_crawl_active_(false), reverse_crawl_button_prev_(false)
     {
         this->declare_parameter<double>("max_vx", 0.6);
         this->declare_parameter<double>("max_vy", 0.6);
@@ -92,6 +95,7 @@ public:
         this->declare_parameter<int>("deadman_button", 0);
         this->declare_parameter<int>("turbo_button", 0);
         this->declare_parameter<int>("crawl_button", 1);
+        this->declare_parameter<int>("reverse_crawl_button", 0);
         this->declare_parameter<double>("crawl_speed", 0.05);
         this->declare_parameter<double>("joy_msg_timeout", -1.0);
         this->declare_parameter<int>("teleop_rate", 10);
@@ -108,6 +112,7 @@ public:
         deadman_button = this->get_parameter("deadman_button").as_int();
         turbo_button = this->get_parameter("turbo_button").as_int();
         crawl_button = this->get_parameter("crawl_button").as_int();
+        reverse_crawl_button = this->get_parameter("reverse_crawl_button").as_int();
         crawl_speed = this->get_parameter("crawl_speed").as_double();
         double joy_msg_timeout = this->get_parameter("joy_msg_timeout").as_double();
 
@@ -147,10 +152,21 @@ public:
         bool crawl_button_now = (static_cast<size_t>(crawl_button) < joy_msg->buttons.size()) && joy_msg->buttons[crawl_button];
         if (crawl_button_now && !crawl_button_prev_) {
             crawl_active_ = !crawl_active_;
+            if (crawl_active_) reverse_crawl_active_ = false;
             RCLCPP_INFO(this->get_logger(), "Crawl mode %s (%.3f m/s)",
                 crawl_active_ ? "ON" : "OFF", crawl_speed);
         }
         crawl_button_prev_ = crawl_button_now;
+
+        // Reverse crawl toggle: rising edge on reverse crawl button
+        bool reverse_crawl_button_now = (static_cast<size_t>(reverse_crawl_button) < joy_msg->buttons.size()) && joy_msg->buttons[reverse_crawl_button];
+        if (reverse_crawl_button_now && !reverse_crawl_button_prev_) {
+            reverse_crawl_active_ = !reverse_crawl_active_;
+            if (reverse_crawl_active_) crawl_active_ = false;
+            RCLCPP_INFO(this->get_logger(), "Reverse crawl mode %s (%.3f m/s)",
+                reverse_crawl_active_ ? "ON" : "OFF", crawl_speed);
+        }
+        reverse_crawl_button_prev_ = reverse_crawl_button_now;
 
         // Compute joystick velocities (used for both normal mode and crawl cancellation)
         turbo_ = (static_cast<size_t>(turbo_button) < joy_msg->buttons.size()) && joy_msg->buttons[turbo_button];
@@ -166,14 +182,20 @@ public:
         if ((axis_vw >= 0) && (static_cast<size_t>(axis_vw) < joy_msg->axes.size()))
             joy_vw = joy_msg->axes[axis_vw] * vw;
 
-        // Cancel crawl if stick-derived velocity exceeds crawl speed
-        if (crawl_active_ && (std::fabs(joy_vx) > crawl_speed || std::fabs(joy_vy) > crawl_speed || std::fabs(joy_vw) > crawl_speed)) {
+        // Cancel crawl/reverse crawl if stick-derived velocity exceeds crawl speed
+        if ((crawl_active_ || reverse_crawl_active_) &&
+            (std::fabs(joy_vx) > crawl_speed || std::fabs(joy_vy) > crawl_speed || std::fabs(joy_vw) > crawl_speed)) {
             crawl_active_ = false;
+            reverse_crawl_active_ = false;
             RCLCPP_INFO(this->get_logger(), "Crawl cancelled by stick input");
         }
 
         if (crawl_active_) {
             req_vx = crawl_speed;
+            req_vy = 0.0;
+            req_vw = 0.0;
+        } else if (reverse_crawl_active_) {
+            req_vx = -crawl_speed;
             req_vy = 0.0;
             req_vw = 0.0;
         } else {
