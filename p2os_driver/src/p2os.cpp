@@ -54,6 +54,9 @@ P2OSNode::P2OSNode(const std::string & node_name)
   //n_private.param(std::string("base_link_frame_id"), base_link_frame_id, std::string("base_link"));
   this->declare_parameter<std::string>("base_link_frame_id", "base_link");
   this->get_parameter("base_link_frame_id", base_link_frame_id);
+
+  this->declare_parameter<bool>("publish_tf", true);
+  this->get_parameter("publish_tf", publish_tf_);
   // Use sonar
   //n_private.param("use_sonar", use_sonar_, false);
   this->declare_parameter<bool>("use_sonar", false);
@@ -844,7 +847,9 @@ P2OSNode::StandardSIPPutData(rclcpp::Time ts)
   p2os_data.position.header.stamp = ts;
   pose_pub_->publish(p2os_data.position);
   p2os_data.odom_trans.header.stamp = ts;
-  odom_broadcaster->sendTransform(p2os_data.odom_trans);
+  if (publish_tf_) {
+    odom_broadcaster->sendTransform(p2os_data.odom_trans);
+  }
 
   p2os_data.batt.header.stamp = ts;
   batt_pub_->publish(p2os_data.batt);
