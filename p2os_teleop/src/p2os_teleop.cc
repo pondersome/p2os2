@@ -62,7 +62,9 @@ public:
     double req_vx, req_vy, req_vw;
     double max_vx, max_vy, max_vw, max_vx_turbo, max_vy_turbo, max_vw_turbo;
     int axis_vx, axis_vy, axis_vw;
-    int deadman_button, turbo_button, crawl_button, reverse_crawl_button;
+    int deadman_button, turbo_button;
+    int crawl_button, reverse_crawl_button;  // legacy button-based crawl
+    int crawl_axis;                          // axis-based crawl (dpad vertical)
     double crawl_speed;
     bool deadman_no_publish_;
     bool deadman_;
@@ -71,6 +73,8 @@ public:
     bool crawl_button_prev_;
     bool reverse_crawl_active_;
     bool reverse_crawl_button_prev_;
+    double crawl_axis_prev_;    // previous dpad axis value for edge detection
+    int zero_flush_remaining_;  // countdown of zero-vel messages after deadman release
     rclcpp::Time last_received_joy_message_time_;
     rclcpp::Duration joy_msg_timeout_{-1,0};
 
@@ -81,7 +85,8 @@ public:
     TeleopBase(bool deadman_no_publish = false)
     : Node("p2os_teleop"), deadman_no_publish_(deadman_no_publish),
       turbo_(false), crawl_active_(false), crawl_button_prev_(false),
-      reverse_crawl_active_(false), reverse_crawl_button_prev_(false)
+      reverse_crawl_active_(false), reverse_crawl_button_prev_(false),
+      crawl_axis_prev_(0.0), zero_flush_remaining_(0)
     {
         this->declare_parameter<double>("max_vx", 0.6);
         this->declare_parameter<double>("max_vy", 0.6);
@@ -94,8 +99,9 @@ public:
         this->declare_parameter<int>("axis_vy", 2);
         this->declare_parameter<int>("deadman_button", 0);
         this->declare_parameter<int>("turbo_button", 0);
-        this->declare_parameter<int>("crawl_button", 1);
-        this->declare_parameter<int>("reverse_crawl_button", 0);
+        this->declare_parameter<int>("crawl_button", -1);          // legacy, -1=disabled
+        this->declare_parameter<int>("reverse_crawl_button", -1);  // legacy, -1=disabled
+        this->declare_parameter<int>("crawl_axis", 7);             // dpad vertical: up=fwd, down=rev
         this->declare_parameter<double>("crawl_speed", 0.05);
         this->declare_parameter<double>("joy_msg_timeout", -1.0);
         this->declare_parameter<int>("teleop_rate", 10);
@@ -113,6 +119,7 @@ public:
         turbo_button = this->get_parameter("turbo_button").as_int();
         crawl_button = this->get_parameter("crawl_button").as_int();
         reverse_crawl_button = this->get_parameter("reverse_crawl_button").as_int();
+        crawl_axis = this->get_parameter("crawl_axis").as_int();
         crawl_speed = this->get_parameter("crawl_speed").as_double();
         double joy_msg_timeout = this->get_parameter("joy_msg_timeout").as_double();
 
@@ -148,25 +155,48 @@ public:
 
         last_received_joy_message_time_ = this->now();
 
-        // Crawl toggle: rising edge on crawl button
-        bool crawl_button_now = (static_cast<size_t>(crawl_button) < joy_msg->buttons.size()) && joy_msg->buttons[crawl_button];
-        if (crawl_button_now && !crawl_button_prev_) {
-            crawl_active_ = !crawl_active_;
-            if (crawl_active_) reverse_crawl_active_ = false;
-            RCLCPP_INFO(this->get_logger(), "Crawl mode %s (%.3f m/s)",
-                crawl_active_ ? "ON" : "OFF", crawl_speed);
+        // Crawl toggle via dpad axis (preferred) or legacy buttons
+        // Dpad axis: rising edge from 0 → +1 = forward crawl toggle,
+        //            rising edge from 0 → -1 = reverse crawl toggle
+        if (crawl_axis >= 0 && static_cast<size_t>(crawl_axis) < joy_msg->axes.size()) {
+            double axis_val = joy_msg->axes[crawl_axis];
+            if (axis_val > 0.5 && crawl_axis_prev_ <= 0.5) {
+                // Dpad up: toggle forward crawl
+                crawl_active_ = !crawl_active_;
+                if (crawl_active_) reverse_crawl_active_ = false;
+                RCLCPP_INFO(this->get_logger(), "Crawl mode %s (%.3f m/s)",
+                    crawl_active_ ? "ON" : "OFF", crawl_speed);
+            } else if (axis_val < -0.5 && crawl_axis_prev_ >= -0.5) {
+                // Dpad down: toggle reverse crawl
+                reverse_crawl_active_ = !reverse_crawl_active_;
+                if (reverse_crawl_active_) crawl_active_ = false;
+                RCLCPP_INFO(this->get_logger(), "Reverse crawl mode %s (%.3f m/s)",
+                    reverse_crawl_active_ ? "ON" : "OFF", crawl_speed);
+            }
+            crawl_axis_prev_ = axis_val;
         }
-        crawl_button_prev_ = crawl_button_now;
 
-        // Reverse crawl toggle: rising edge on reverse crawl button
-        bool reverse_crawl_button_now = (static_cast<size_t>(reverse_crawl_button) < joy_msg->buttons.size()) && joy_msg->buttons[reverse_crawl_button];
-        if (reverse_crawl_button_now && !reverse_crawl_button_prev_) {
-            reverse_crawl_active_ = !reverse_crawl_active_;
-            if (reverse_crawl_active_) crawl_active_ = false;
-            RCLCPP_INFO(this->get_logger(), "Reverse crawl mode %s (%.3f m/s)",
-                reverse_crawl_active_ ? "ON" : "OFF", crawl_speed);
+        // Legacy button-based crawl (when crawl_button >= 0)
+        if (crawl_button >= 0) {
+            bool crawl_button_now = (static_cast<size_t>(crawl_button) < joy_msg->buttons.size()) && joy_msg->buttons[crawl_button];
+            if (crawl_button_now && !crawl_button_prev_) {
+                crawl_active_ = !crawl_active_;
+                if (crawl_active_) reverse_crawl_active_ = false;
+                RCLCPP_INFO(this->get_logger(), "Crawl mode %s (%.3f m/s)",
+                    crawl_active_ ? "ON" : "OFF", crawl_speed);
+            }
+            crawl_button_prev_ = crawl_button_now;
         }
-        reverse_crawl_button_prev_ = reverse_crawl_button_now;
+        if (reverse_crawl_button >= 0) {
+            bool reverse_crawl_button_now = (static_cast<size_t>(reverse_crawl_button) < joy_msg->buttons.size()) && joy_msg->buttons[reverse_crawl_button];
+            if (reverse_crawl_button_now && !reverse_crawl_button_prev_) {
+                reverse_crawl_active_ = !reverse_crawl_active_;
+                if (reverse_crawl_active_) crawl_active_ = false;
+                RCLCPP_INFO(this->get_logger(), "Reverse crawl mode %s (%.3f m/s)",
+                    reverse_crawl_active_ ? "ON" : "OFF", crawl_speed);
+            }
+            reverse_crawl_button_prev_ = reverse_crawl_button_now;
+        }
 
         // Compute joystick velocities (used for both normal mode and crawl cancellation)
         turbo_ = (static_cast<size_t>(turbo_button) < joy_msg->buttons.size()) && joy_msg->buttons[turbo_button];
@@ -211,15 +241,27 @@ public:
     void send_cmd_vel()
     {
         if (deadman_ && (last_received_joy_message_time_ + joy_msg_timeout_ > this->now())) {
+            // Deadman held: publish commanded velocity
             cmd.linear.x = req_vx;
             cmd.linear.y = req_vy;
             cmd.angular.z = req_vw;
             vel_pub_->publish(cmd);
-        } else {
+            zero_flush_remaining_ = 3;  // arm the flush for when deadman releases
+        } else if (zero_flush_remaining_ > 0) {
+            // Deadman just released: flush zero velocity to ensure the robot
+            // stops before we stop publishing. 3 messages for packet loss safety.
+            cmd.linear.x = 0.0;
+            cmd.linear.y = 0.0;
+            cmd.angular.z = 0.0;
+            vel_pub_->publish(cmd);
+            zero_flush_remaining_--;
+        } else if (!deadman_no_publish_) {
+            // Legacy behavior: keep publishing passthrough when deadman not held
             cmd = passthrough_cmd;
-            if (!deadman_no_publish_)
-                vel_pub_->publish(cmd);
+            vel_pub_->publish(cmd);
         }
+        // else: deadman_no_publish_ mode, flush complete — stop publishing
+        // so twist_mux can fall through to lower-priority sources (e.g. Nav2)
     }
 };
 
