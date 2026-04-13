@@ -170,6 +170,13 @@ protected:
   std::shared_ptr<tf2_ros::TransformBroadcaster> odom_broadcaster;
   rclcpp::Time veltime;
 
+  //! cmd_vel silence watchdog: if enabled and no cmd_vel arrives within
+  //! cmd_vel_timeout_s_ seconds, the current non-zero velocity is zeroed
+  //! to the wheels. 0.0 disables the watchdog entirely.
+  double cmd_vel_timeout_s_;
+  rclcpp::Time last_cmdvel_time_;
+  bool cmdvel_watchdog_triggered_;
+
   SIP * sippacket;
   std::string psos_serial_port;
   std::string psos_tcp_host;

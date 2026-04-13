@@ -209,6 +209,19 @@ P2OSNode::P2OSNode(const std::string & node_name)
 
   veltime = this->now();
 
+  // cmd_vel silence watchdog: zero the wheels if cmd_vel stops arriving.
+  // Defense-in-depth for e-stop lockouts, stale nav commands, and
+  // publisher crashes. 0.0 disables. Default 0.2s balances responsiveness
+  // against false-positives from transient network hiccups.
+  this->declare_parameter<double>("cmd_vel_timeout", 0.2);
+  this->get_parameter("cmd_vel_timeout", cmd_vel_timeout_s_);
+  last_cmdvel_time_ = this->now();
+  cmdvel_watchdog_triggered_ = false;
+  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"),
+    "cmd_vel watchdog: %s (timeout=%.3fs)",
+    cmd_vel_timeout_s_ > 0.0 ? "enabled" : "disabled",
+    cmd_vel_timeout_s_);
+
   // add diagnostic functions
   //diagnostic_.add("Motor Stall", this, &P2OSNode::check_stall);
   //diagnostic_.add("Battery Voltage", this, &P2OSNode::check_voltage);
@@ -282,6 +295,10 @@ void P2OSNode::check_and_set_gripper_state()
 
 void P2OSNode::cmdvel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
+  // Stamp arrival for the silence watchdog, regardless of value change.
+  last_cmdvel_time_ = this->now();
+  cmdvel_watchdog_triggered_ = false;
+
   if (fabs(msg->linear.x - cmdvel_.linear.x) > 0.01 ||
     fabs(msg->angular.z - cmdvel_.angular.z) > 0.01)
   {
@@ -304,6 +321,25 @@ void P2OSNode::cmdvel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
 
 void P2OSNode::check_and_set_vel()
 {
+  // Silence watchdog: if cmd_vel has stopped arriving and the last
+  // commanded velocity is still non-zero, force zero to the wheels.
+  // Single-shot per silence interval (cleared on next incoming cmd_vel).
+  if (cmd_vel_timeout_s_ > 0.0 && !cmdvel_watchdog_triggered_) {
+    const double silence = (this->now() - last_cmdvel_time_).seconds();
+    if (silence > cmd_vel_timeout_s_ &&
+      (fabs(cmdvel_.linear.x) > 0.01 || fabs(cmdvel_.angular.z) > 0.01))
+    {
+      RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"),
+        "cmd_vel watchdog triggered: no messages for %.3fs, zeroing velocity",
+        silence);
+      cmdvel_.linear.x = 0.0;
+      cmdvel_.linear.y = 0.0;
+      cmdvel_.angular.z = 0.0;
+      vel_dirty = true;
+      cmdvel_watchdog_triggered_ = true;
+    }
+  }
+
   if (!vel_dirty) {return;}
 
   RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "setting vel: [%0.2f,%0.2f]", cmdvel_.linear.x, cmdvel_.angular.z);

@@ -13,7 +13,19 @@ Launch configurations that were migrated to ROS2 python launch files for functio
 p2os_driver
 -----------
 
-Essential to P2OS is the driver. This controls the interface for the P2OS ARCOS controller. 
+Essential to P2OS is the driver. This controls the interface for the P2OS ARCOS controller.
+
+**Breaking change (2026-04): cmd_vel silence watchdog is now active by default.**
+The driver enforces a 200ms timeout on cmd_vel by default — if no new
+cmd_vel arrives within that window and the last commanded velocity is
+non-zero, the driver zeroes the wheels. This replaces the legacy
+"send-once, robot moves until the next command" behavior. All continuous
+publishers (Nav2 controllers, p2os_teleop, joystick teleop) satisfy this
+contract out of the box. To restore the legacy behavior set
+`cmd_vel_timeout:=0.0` on the driver. See
+[p2os_velocity_and_acceleration.md](../../ponderdocs/p2os2/docs/p2os_velocity_and_acceleration.md#cmd_vel-silence-watchdog)
+for the full discussion.
+
 
 
 p2os_launch
