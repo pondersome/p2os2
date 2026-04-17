@@ -41,10 +41,9 @@ def generate_launch_description():
 
         ExecuteProcess(
             cmd=[
-                'ros2', 'topic', 'pub', '--once',
-                topic_name_expr,                 # <-- use the PythonExpression
+                'ros2', 'topic', 'pub', '-w', '1', '-t', '5',
+                topic_name_expr,
                 'p2os_msgs/msg/MotorState',
-                # For the message data:
                 PythonExpression(["'state: ' + str(", cmd_motor_state_arg, ")"])
             ],
             output='screen'
