@@ -27,13 +27,17 @@
 #include "rclcpp/rclcpp.hpp"
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/msg/range.hpp>
 #include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/static_transform_broadcaster.h>
 #include <p2os_msgs/msg/motor_state.hpp>
 #include <p2os_msgs/msg/gripper_state.hpp>
 #include <p2os_msgs/msg/sonar_array.hpp>
 #include <p2os_msgs/msg/dio.hpp>
 #include <p2os_msgs/msg/aio.hpp>
 #include <p2os_msgs/msg/battery_state.hpp>
+#include <vector>
 
 //#include <diagnostic_updater/publisher.h>
 //#include <diagnostic_updater/diagnostic_updater.h>
@@ -118,6 +122,28 @@ public:
 
   void SendPulse(void);
 
+  //! Lazy one-shot. Uses the live PlayerRobotParams[param_idx] sonar_pose
+  //! table to build per-sensor frames, cache conversions, create the
+  //! 16 Range + 1 PointCloud2 publishers, and broadcast the static TFs.
+  //! Safe to call from StandardSIPPutData — it requires param_idx, which
+  //! is assigned during Setup().
+  void init_sonar_extras();
+
+  //! Fan out the current SonarArray into per-sensor Range messages and a
+  //! single PointCloud2 (xyz + sensor_id). No-ops if the corresponding
+  //! publish flags are false. Silently defers until init_sonar_extras()
+  //! has run.
+  void publish_sonar_extras(const rclcpp::Time & ts);
+
+  //! Parameter callback: makes `use_sonar` runtime-toggleable. When it
+  //! transitions it commands ARCOS (ToggleSonarPower 0|1) and updates
+  //! the runtime publish gate. Other params are accepted without side
+  //! effects; changing `sonar_frame_prefix`, `sonar_parent_frame`, or
+  //! `sonar_z_offset_m` after startup doesn't re-emit the static TFs
+  //! — toggling use_sonar is the supported dynamic knob.
+  rcl_interfaces::msg::SetParametersResult on_parameters_set(
+    const std::vector<rclcpp::Parameter> & params);
+
   void check_and_set_vel();
   //void cmdvel_cb(const geometry_msgs::msg::Twist::ConstSharedPtr &);
   void cmdvel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
@@ -159,6 +185,42 @@ protected:
   rclcpp::Publisher<p2os_msgs::msg::AIO>::SharedPtr aio_pub_;
   rclcpp::Publisher<p2os_msgs::msg::DIO>::SharedPtr dio_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pose_pub_;
+
+  //! Per-sensor Range publishers. Sized to the active robot's SonarNum
+  //! at init_sonar_extras() time (16 for a P3AT).
+  std::vector<rclcpp::Publisher<sensor_msgs::msg::Range>::SharedPtr> sonar_range_pubs_;
+  //! Single PointCloud2 topic with one point per live sonar reading.
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr sonar_cloud_pub_;
+  //! Emits the per-sensor frames once at init time. Must outlive the
+  //! node so late subscribers still receive them via transient_local QoS.
+  std::shared_ptr<tf2_ros::StaticTransformBroadcaster> sonar_static_broadcaster_;
+  //! Cached per-sensor frame ids, matching array index.
+  std::vector<std::string> sonar_frame_ids_;
+  //! Cached per-sensor mount (x, y) in meters, base-link frame.
+  std::vector<std::pair<double, double>> sonar_xy_m_;
+  //! Cached per-sensor mount yaw in radians, base-link frame.
+  std::vector<double> sonar_theta_rad_;
+  //! True once init_sonar_extras() has successfully configured itself.
+  bool sonar_extras_ready_ = false;
+  //! Handle must be retained for the parameter callback to stay alive.
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr
+    sonar_param_cb_handle_;
+
+  // Sonar fan-out parameters (see p2os.cpp for defaults/docs).
+  bool sonar_publish_array_;
+  bool sonar_publish_ranges_;
+  bool sonar_publish_cloud_;
+  std::string sonar_frame_prefix_;
+  std::string sonar_parent_frame_;
+  double sonar_fov_rad_;
+  double sonar_min_range_m_;
+  double sonar_max_range_m_;
+  //! Z offset (m) applied to every per-sensor frame. The Pioneer
+  //! sonar arrays physically sit ~0.25 m above base_link on the top
+  //! plate; the robot_params sonar_pose table encodes only XY + yaw.
+  //! Default 0.0 so behavior is unchanged for stacks that don't set
+  //! it; grunt's launch overrides to the URDF top-plate height.
+  double sonar_z_offset_m_;
 
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmdvel_sub_;
   rclcpp::Subscription<p2os_msgs::msg::MotorState>::SharedPtr cmdmstate_sub_;

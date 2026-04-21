@@ -25,8 +25,14 @@
 #include <string.h>
 
 #include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
+#include <sensor_msgs/msg/point_field.hpp>
+#include <tf2/LinearMath/Quaternion.h>
 #include "p2os_driver/p2os.hpp"
 
+#include <cmath>
+#include <cstring>
 #include <string>
 
 /*P2OSNode::P2OSNode(rclcpp::Node nh)
@@ -179,9 +185,53 @@ P2OSNode::P2OSNode(const std::string & node_name)
   aio_pub_ = this->create_publisher<p2os_msgs::msg::AIO>("aio", 10);
   dio_pub_ = this->create_publisher<p2os_msgs::msg::DIO>("dio", 10);
 
+  // Sonar fan-out parameters. The per-sensor Range and PointCloud2 paths
+  // present the same physical array in the two representations Nav2 and
+  // RViz expect (range_sensor_layer consumes Range; obstacle_layer and
+  // RViz-PointCloud consume PointCloud2). Keep the legacy SonarArray on
+  // by default for anything already consuming it.
+  this->declare_parameter<bool>("sonar_publish_array", true);
+  this->declare_parameter<bool>("sonar_publish_ranges", true);
+  this->declare_parameter<bool>("sonar_publish_cloud", true);
+  // Default prefix derives from the node namespace so per-sensor
+  // frames inherit the rest of the stack's naming scheme (e.g. under
+  // namespace /grunt1 → "grunt1/sonar_"). Empty namespace ("/")
+  // falls back to bare "sonar_".
+  {
+    std::string ns = this->get_namespace();
+    std::string default_prefix = "sonar_";
+    if (ns.size() > 1 && ns[0] == '/') {
+      default_prefix = ns.substr(1) + "/sonar_";
+    }
+    this->declare_parameter<std::string>("sonar_frame_prefix", default_prefix);
+  }
+  // Default parent = the driver's base_link_frame_id, so integrators
+  // who've remapped the base frame get correct TF parents automatically.
+  this->declare_parameter<std::string>("sonar_parent_frame", base_link_frame_id);
+  // Polaroid 6500 transducer beamwidth on the stock P2/P3 arrays is ~30°.
+  this->declare_parameter<double>("sonar_fov_rad", 0.5236);
+  this->declare_parameter<double>("sonar_min_range_m", 0.15);
+  this->declare_parameter<double>("sonar_max_range_m", 5.0);
+  this->declare_parameter<double>("sonar_z_offset_m", 0.0);
+  this->get_parameter("sonar_publish_array", sonar_publish_array_);
+  this->get_parameter("sonar_publish_ranges", sonar_publish_ranges_);
+  this->get_parameter("sonar_publish_cloud", sonar_publish_cloud_);
+  this->get_parameter("sonar_frame_prefix", sonar_frame_prefix_);
+  this->get_parameter("sonar_parent_frame", sonar_parent_frame_);
+  this->get_parameter("sonar_fov_rad", sonar_fov_rad_);
+  this->get_parameter("sonar_min_range_m", sonar_min_range_m_);
+  this->get_parameter("sonar_max_range_m", sonar_max_range_m_);
+  this->get_parameter("sonar_z_offset_m", sonar_z_offset_m_);
+
+  // Make use_sonar runtime-toggleable. Example:
+  //   ros2 param set /<ns>/p2os_driver use_sonar false
+  sonar_param_cb_handle_ = this->add_on_set_parameters_callback(
+    std::bind(&P2OSNode::on_parameters_set, this, std::placeholders::_1));
+
   //instantiate the TransformBroadcaster
   //odom_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this->get_node_base_interface());
   odom_broadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+  sonar_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(*this);
   
   // subscribe to services
   /*
@@ -399,7 +449,24 @@ int P2OSNode::Setup()
   int i;
   int bauds[] = {B9600, B38400, B19200, B115200, B57600};
   int numbauds = sizeof(bauds);
+  // Start SYNC at the configured operating baud rate (115200 for grunt
+  // by default). Prior runs' successful HOSTBAUD switch leaves ARCOS
+  // at that rate; matching it immediately avoids the baud-cycling
+  // dance the common-case dirty restart would otherwise trigger.
+  // Fresh boots where ARCOS is at factory 9600 fall through to the
+  // outer-loop retry's full baud cycle.
   int currbaud = 0;
+  if (this->requested_baud_rate > 0) {
+    const int rate_map[][2] = {
+      {9600,  0}, {38400, 1}, {19200, 2}, {115200, 3}, {57600, 4},
+    };
+    for (const auto & m : rate_map) {
+      if (m[0] == this->requested_baud_rate) {
+        currbaud = m[1];
+        break;
+      }
+    }
+  }
   sippacket = NULL;
   lastPulseTime = 0.0;
 
@@ -408,6 +475,11 @@ int P2OSNode::Setup()
   P2OSPacket packet, receivedpacket;
   int flags = 0;
   bool sent_close = false;
+  // If we've sent CLOSE to a dirty-state ARCOS and it's still streaming
+  // SIPs instead of acknowledging, don't spend 50+s draining its buffer
+  // and cycling baud rates — bail out to the outer retry which sleeps
+  // past the ARCOS watchdog and starts over with a clean slate.
+  bool bail_to_retry = false;
 
   enum
   {
@@ -466,8 +538,42 @@ int P2OSNode::Setup()
     return 1;
   }
   // Sync:
-
-  int num_sync_attempts = 3;
+  //
+  // Outer retry loop: a dirty-exit from the previous driver run (e.g.
+  // SIGKILL, crash, or a shutdown that didn't fully land ARCOS in idle)
+  // can leave ARCOS in a state where SYNC0 gets no response at any
+  // baud rate. The ARCOS firmware has a ~2 s serial watchdog — if it
+  // hears nothing for that long, it resets its command interpreter
+  // back to the listening-for-SYNC state. So: if the first SYNC
+  // attempt exhausts all baud rates, sleep past the watchdog, flush
+  // both directions of the TTY, reset to the starting baud, and try
+  // once more.
+  // On the first attempt, don't bother cycling through all 5 baud rates
+  // — the outer retry below handles dirty ARCOS state much faster via
+  // the 2.5s watchdog wait. Only try the cycle on the final attempt so
+  // users with non-default baud boot state still get reached eventually.
+  const int MAX_SETUP_ATTEMPTS = 2;
+  int num_sync_attempts = 1;
+  int max_currbaud = 1;  // attempt 0: only baud 0; attempt 1: all bauds
+  int setup_attempts = 0;
+  for (setup_attempts = 0; setup_attempts < MAX_SETUP_ATTEMPTS; ++setup_attempts) {
+    if (setup_attempts > 0) {
+      RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"),
+        "SYNC failed; waiting 2.5s past ARCOS watchdog and retrying (full baud cycle)...");
+      rclcpp::sleep_for(std::chrono::milliseconds(2500));
+      tcflush(this->psos_fd, TCIOFLUSH);
+      // Reset to the starting baud rate. This is important because
+      // the prior attempt's last-tried rate is still set on the TTY.
+      currbaud = 0;
+      cfsetispeed(&term, bauds[currbaud]);
+      cfsetospeed(&term, bauds[currbaud]);
+      tcsetattr(this->psos_fd, TCSAFLUSH, &term);
+      psos_state = NO_SYNC;
+      sent_close = false;
+      bail_to_retry = false;
+      num_sync_attempts = 3;
+      max_currbaud = numbauds;  // final attempt: cycle all baud rates
+    }
   while (psos_state != READY) {
     switch (psos_state) {
       case NO_SYNC:
@@ -511,8 +617,8 @@ int P2OSNode::Setup()
         rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
         continue;
       } else {
-        // couldn't connect; try different speed.
-        if (++currbaud < numbauds) {
+        // couldn't connect; try different speed (up to this attempt's limit).
+        if (++currbaud < max_currbaud) {
           cfsetispeed(&term, bauds[currbaud]);
           cfsetospeed(&term, bauds[currbaud]);
           if (tcsetattr(this->psos_fd, TCSAFLUSH, &term) < 0) {
@@ -550,8 +656,12 @@ int P2OSNode::Setup()
         psos_state = READY;
         break;
       default:
-        // maybe P2OS is still running from last time.  let's try to CLOSE
-        // and reconnect
+        // Got a packet that's neither SYNC0/1/2 — almost certainly a
+        // SIP from a previous-session ARCOS still in ENABLE state.
+        // First time: try CLOSE to nudge ARCOS to IDLE. Second time:
+        // CLOSE didn't stick (or its TX buffer is still draining) —
+        // short-circuit to the outer retry's watchdog wait instead of
+        // grinding through stale SIPs.
         if (!sent_close) {
           RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "sending CLOSE");
           command = CLOSE;
@@ -562,12 +672,25 @@ int P2OSNode::Setup()
           rclcpp::sleep_for(std::chrono::microseconds(2 * P2OS_CYCLETIME_USEC));
           tcflush(this->psos_fd, TCIFLUSH);
           psos_state = NO_SYNC;
+        } else {
+          RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"),
+            "ARCOS still streaming SIPs after CLOSE — bailing inner SYNC for watchdog retry");
+          bail_to_retry = true;
         }
         break;
     }
+    if (bail_to_retry) {
+      break;  // exit inner while; outer for-loop handles the retry
+    }
     //usleep(P2OS_CYCLETIME_USEC);
     rclcpp::sleep_for(std::chrono::microseconds(P2OS_CYCLETIME_USEC));
-  }
+  }  // end inner while(psos_state != READY)
+    if (psos_state == READY) {
+      break;  // SYNC succeeded; exit the outer retry loop
+    }
+    // else: inner loop bailed on "tried all speeds"; outer for-loop
+    // continues (which does the 2.5s watchdog wait + retry).
+  }  // end outer retry for-loop
   if (psos_state != READY) {
     if (this->psos_use_tcp) {
       RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"), "Couldn't synchronize with P2OS.\n"
@@ -834,25 +957,78 @@ int P2OSNode::Shutdown()
     return -1;
   }
 
-  // Send STOP and CLOSE directly without creating rclcpp objects,
-  // since the rclcpp context may already be shut down by the signal handler.
-  // Packet format: 0xFA 0xFB <len> <command> <checksum-hi> <checksum-lo>
-  auto send_command = [this](unsigned char cmd) {
-    unsigned char pkt[6];
+  // Send everything as raw-byte framed packets — no P2OSPacket, no
+  // SendReceive. Two reasons:
+  //   1. rclcpp may already be torn down by the signal handler by the
+  //      time Shutdown() runs, so any rclcpp-dependent object is
+  //      unsafe.
+  //   2. P2OSPacket::Receive short-circuits via rclcpp::ok() and
+  //      returns immediately, so SendReceive here wouldn't actually
+  //      wait for ARCOS to process the command before the next one.
+  //
+  // The original March fix (commit 35ac389) sent just STOP + CLOSE
+  // and relied on 200 ms sleeps alone. That was enough because the
+  // combined bytes (6 + 6 = 12 B) fit in the UART FIFO. Adding SONAR
+  // pushes the total past what drains inside a sleep — without
+  // tcdrain() and tcflush() the ARCOS parser state and host input
+  // buffer both end up inconsistent across close(), causing the
+  // next startup to fail SYNC on a fast-cadence relaunch.
+  //
+  // Packet format: 0xFA 0xFB <len> <payload...> <chk_hi> <chk_lo>
+  //   where len = payload_size + 2 (the two checksum bytes).
+  auto send_raw = [this](const unsigned char * payload, int plen, int post_sleep_us) {
+    unsigned char pkt[16];
     pkt[0] = 0xFA;
     pkt[1] = 0xFB;
-    pkt[2] = 3;  // payload: command + 2 checksum bytes
-    pkt[3] = cmd;
-    // Checksum for single-byte payload: the byte XOR'd
-    int chksum = cmd;
-    pkt[4] = (chksum >> 8) & 0xFF;
-    pkt[5] = chksum & 0xFF;
-    write(this->psos_fd, pkt, 6);
-    usleep(P2OS_CYCLETIME_USEC);
+    pkt[2] = static_cast<unsigned char>(plen + 2);
+    memcpy(&pkt[3], payload, plen);
+    // Inline checksum (identical algorithm to P2OSPacket::CalcChkSum):
+    //   sum 16-bit big-endian pairs, XOR the tail if odd-length.
+    int c = 0;
+    int n = plen;
+    const unsigned char * b = payload;
+    while (n > 1) {
+      c += (b[0] << 8) | b[1];
+      c &= 0xFFFF;
+      n -= 2;
+      b += 2;
+    }
+    if (n > 0) {
+      c ^= *b;
+    }
+    pkt[3 + plen] = (c >> 8) & 0xFF;
+    pkt[3 + plen + 1] = c & 0xFF;
+    write(this->psos_fd, pkt, plen + 5);
+    // Block until the UART FIFO has actually shifted the bytes out —
+    // otherwise ARCOS's command parser can race with subsequent sends.
+    tcdrain(this->psos_fd);
+    if (post_sleep_us > 0) {
+      usleep(post_sleep_us);
+    }
   };
 
-  send_command(STOP);
-  send_command(CLOSE);
+  // Turn the sonar array off first. ARCOS keeps cycling transducers
+  // autonomously until told to stop — without this they ping audibly
+  // until a chassis reset or the firmware's 2 s serial watchdog fires.
+  //
+  // Give ARCOS two full SIP cycles (400 ms) to finish the sonar
+  // subsystem reconfiguration. Then flush any SIP / CONFIG chatter
+  // ARCOS sent back in response, so those bytes don't interleave
+  // with the subsequent STOP / CLOSE commands on the host side or
+  // land in the TTY buffer at close() time.
+  if (use_sonar_) {
+    unsigned char sonar_off[4] = {SONAR, ARGINT, 0x00, 0x00};
+    send_raw(sonar_off, 4, 2 * P2OS_CYCLETIME_USEC);
+    tcflush(this->psos_fd, TCIFLUSH);
+  }
+
+  unsigned char stop_payload[1] = {STOP};
+  send_raw(stop_payload, 1, P2OS_CYCLETIME_USEC);
+  tcflush(this->psos_fd, TCIFLUSH);
+
+  unsigned char close_payload[1] = {CLOSE};
+  send_raw(close_payload, 1, P2OS_CYCLETIME_USEC);
+  // No final tcflush — ARCOS stops speaking once CLOSE is processed.
 
   close(this->psos_fd);
   this->psos_fd = -1;
@@ -891,9 +1067,16 @@ P2OSNode::StandardSIPPutData(rclcpp::Time ts)
   batt_pub_->publish(p2os_data.batt);
   mstate_pub_->publish(p2os_data.motors);
 
-  // put sonar data
+  // put sonar data. use_sonar_ gates all three representations — when
+  // it's false the firmware isn't pinging anyway, so publishing stale
+  // ranges would just be noise on the wire.
   p2os_data.sonar.header.stamp = ts;
-  sonar_pub_->publish(p2os_data.sonar);
+  if (use_sonar_ && sonar_publish_array_) {
+    sonar_pub_->publish(p2os_data.sonar);
+  }
+  if (use_sonar_) {
+    publish_sonar_extras(ts);
+  }
 
   // put aio data
   aio_pub_->publish(p2os_data.aio);
@@ -906,6 +1089,250 @@ P2OSNode::StandardSIPPutData(rclcpp::Time ts)
 
   // put bumper data
   // put compass data
+}
+
+rcl_interfaces::msg::SetParametersResult
+P2OSNode::on_parameters_set(const std::vector<rclcpp::Parameter> & params)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+
+  for (const auto & p : params) {
+    if (p.get_name() == "use_sonar") {
+      if (p.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
+        result.successful = false;
+        result.reason = "use_sonar must be a bool";
+        return result;
+      }
+      const bool requested = p.as_bool();
+      if (requested == use_sonar_) {
+        continue;  // no-op
+      }
+      // ToggleSonarPower goes through SendReceive (synchronous serial).
+      // Parameter callbacks fire inside spin_some(), which runs
+      // strictly between SendReceive calls in p2osnode.cpp's main
+      // loop, so there's no re-entrancy concern here.
+      if (psos_fd >= 0) {
+        this->ToggleSonarPower(requested ? 1 : 0);
+      }
+      use_sonar_ = requested;
+      RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"),
+        "use_sonar toggled to %s via parameter", requested ? "true" : "false");
+    }
+  }
+  return result;
+}
+
+void
+P2OSNode::init_sonar_extras()
+{
+  if (sonar_extras_ready_) {
+    return;
+  }
+  // param_idx is set in Setup() after the handshake. If Setup() hasn't
+  // run (e.g. no robot connected yet), the default entry at index 0 is
+  // wired up and we'd emit the wrong geometry — hold off until it's
+  // been explicitly claimed.
+  if (sippacket == nullptr) {
+    return;
+  }
+
+  const RobotParams_t & rp = PlayerRobotParams[param_idx];
+  const int n = rp.SonarNum;
+  if (n <= 0) {
+    // Robot model has no sonar in its parameter table — nothing to do.
+    sonar_extras_ready_ = true;
+    return;
+  }
+
+  sonar_frame_ids_.reserve(n);
+  sonar_xy_m_.reserve(n);
+  sonar_theta_rad_.reserve(n);
+  if (sonar_publish_ranges_) {
+    sonar_range_pubs_.reserve(n);
+  }
+
+  std::vector<geometry_msgs::msg::TransformStamped> transforms;
+  transforms.reserve(n);
+  const rclcpp::Time static_ts = this->now();
+  constexpr double deg_to_rad = M_PI / 180.0;
+
+  for (int i = 0; i < n; ++i) {
+    // sonar_pose entries are mm, mm, deg in base_link frame. The rear
+    // array entries already encode the 180° rotation via their theta
+    // values (e.g. ±90° / ±130° / ±150° / ±170°) so no array-level
+    // flip is needed here.
+    const double x_m = rp.sonar_pose[i].x / 1000.0;
+    const double y_m = rp.sonar_pose[i].y / 1000.0;
+    const double th_rad = rp.sonar_pose[i].th * deg_to_rad;
+    sonar_xy_m_.emplace_back(x_m, y_m);
+    sonar_theta_rad_.emplace_back(th_rad);
+
+    const std::string frame = sonar_frame_prefix_ + std::to_string(i);
+    sonar_frame_ids_.emplace_back(frame);
+
+    geometry_msgs::msg::TransformStamped t;
+    t.header.stamp = static_ts;
+    t.header.frame_id = sonar_parent_frame_;
+    t.child_frame_id = frame;
+    t.transform.translation.x = x_m;
+    t.transform.translation.y = y_m;
+    t.transform.translation.z = sonar_z_offset_m_;
+    tf2::Quaternion q;
+    q.setRPY(0.0, 0.0, th_rad);
+    t.transform.rotation.x = q.x();
+    t.transform.rotation.y = q.y();
+    t.transform.rotation.z = q.z();
+    t.transform.rotation.w = q.w();
+    transforms.push_back(t);
+
+    if (sonar_publish_ranges_) {
+      // Topic path sonar/range_<N> keeps the namespace clean vs. the
+      // existing sonar topic. costmap_2d's range_sensor_layer accepts
+      // a list of input topics; one topic per sensor fits naturally.
+      sonar_range_pubs_.push_back(
+        this->create_publisher<sensor_msgs::msg::Range>(
+          "sonar/range_" + std::to_string(i), 10));
+    }
+  }
+  sonar_static_broadcaster_->sendTransform(transforms);
+
+  if (sonar_publish_cloud_) {
+    sonar_cloud_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+      "sonar/cloud", 10);
+  }
+
+  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"),
+    "Sonar fan-out ready: %d sensors, parent=%s, prefix=%s, fov=%.2frad "
+    "(array=%s, ranges=%s, cloud=%s)",
+    n, sonar_parent_frame_.c_str(), sonar_frame_prefix_.c_str(), sonar_fov_rad_,
+    sonar_publish_array_ ? "on" : "off",
+    sonar_publish_ranges_ ? "on" : "off",
+    sonar_publish_cloud_ ? "on" : "off");
+
+  sonar_extras_ready_ = true;
+}
+
+void
+P2OSNode::publish_sonar_extras(const rclcpp::Time & ts)
+{
+  if (!sonar_publish_ranges_ && !sonar_publish_cloud_) {
+    return;
+  }
+  if (!sonar_extras_ready_) {
+    init_sonar_extras();
+    if (!sonar_extras_ready_) {
+      return;
+    }
+  }
+
+  const auto & ranges = p2os_data.sonar.ranges;
+  const size_t configured = sonar_frame_ids_.size();
+  const size_t reported = ranges.size();
+  // Readings arrive round-robin in the SIP, and SIP accumulates the
+  // running max-index-ever-seen. Early cycles may cover fewer sensors
+  // than the robot has — iterate the full configured set and skip
+  // entries the firmware hasn't delivered yet.
+
+  // Range fan-out: one message per configured sensor. Re-stamp with now()
+  // every cycle so consumers see a "live" sensor even when a given index
+  // didn't update this SIP — the Pioneer firmware round-robins, not all
+  // sensors fire every cycle.
+  if (sonar_publish_ranges_) {
+    for (size_t i = 0; i < configured && i < sonar_range_pubs_.size(); ++i) {
+      if (i >= reported) {
+        break;
+      }
+      sensor_msgs::msg::Range r;
+      r.header.stamp = ts;
+      r.header.frame_id = sonar_frame_ids_[i];
+      r.radiation_type = sensor_msgs::msg::Range::ULTRASOUND;
+      r.field_of_view = static_cast<float>(sonar_fov_rad_);
+      r.min_range = static_cast<float>(sonar_min_range_m_);
+      r.max_range = static_cast<float>(sonar_max_range_m_);
+      r.range = static_cast<float>(ranges[i]);
+      sonar_range_pubs_[i]->publish(r);
+    }
+  }
+
+  // PointCloud2 fan-out: one point per sensor that reported a valid
+  // (non-sentinel) range this cycle. Points are expressed in the
+  // parent frame (typically base_link), so downstream consumers don't
+  // need the per-sensor TFs in their own tree.
+  if (sonar_publish_cloud_ && sonar_cloud_pub_) {
+    sensor_msgs::msg::PointCloud2 cloud;
+    cloud.header.stamp = ts;
+    cloud.header.frame_id = sonar_parent_frame_;
+    cloud.height = 1;
+    cloud.is_dense = true;
+    cloud.is_bigendian = false;
+
+    // Layout: x(float32), y(float32), z(float32), sensor_id(uint8).
+    // Keeping sensor_id lets downstream filter/visualize by array or
+    // by individual sensor.
+    cloud.fields.resize(4);
+    cloud.fields[0].name = "x";
+    cloud.fields[0].offset = 0;
+    cloud.fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
+    cloud.fields[0].count = 1;
+    cloud.fields[1].name = "y";
+    cloud.fields[1].offset = 4;
+    cloud.fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
+    cloud.fields[1].count = 1;
+    cloud.fields[2].name = "z";
+    cloud.fields[2].offset = 8;
+    cloud.fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
+    cloud.fields[2].count = 1;
+    cloud.fields[3].name = "sensor_id";
+    cloud.fields[3].offset = 12;
+    cloud.fields[3].datatype = sensor_msgs::msg::PointField::UINT8;
+    cloud.fields[3].count = 1;
+    cloud.point_step = 16;  // 12 bytes xyz + 1 byte id + 3 bytes padding
+
+    // Collect points first so we can size the buffer correctly.
+    struct Pt
+    {
+      float x, y, z;
+      uint8_t id;
+    };
+    std::vector<Pt> pts;
+    pts.reserve(configured);
+
+    const double eps = 1e-3;
+    for (size_t i = 0; i < configured; ++i) {
+      if (i >= reported) {
+        break;
+      }
+      const double range_m = ranges[i];
+      // Skip no-echo sentinels on both ends. min/max filtering keeps
+      // RViz clear of phantom walls at max_range and ghost points at 0.
+      if (range_m <= sonar_min_range_m_ + eps ||
+        range_m >= sonar_max_range_m_ - eps)
+      {
+        continue;
+      }
+      const double th = sonar_theta_rad_[i];
+      const double hit_x = sonar_xy_m_[i].first + range_m * std::cos(th);
+      const double hit_y = sonar_xy_m_[i].second + range_m * std::sin(th);
+      pts.push_back({static_cast<float>(hit_x), static_cast<float>(hit_y),
+        static_cast<float>(sonar_z_offset_m_), static_cast<uint8_t>(i)});
+    }
+
+    cloud.width = static_cast<uint32_t>(pts.size());
+    cloud.row_step = cloud.point_step * cloud.width;
+    cloud.data.resize(cloud.row_step);
+    for (size_t p = 0; p < pts.size(); ++p) {
+      uint8_t * dst = cloud.data.data() + p * cloud.point_step;
+      std::memcpy(dst + 0, &pts[p].x, sizeof(float));
+      std::memcpy(dst + 4, &pts[p].y, sizeof(float));
+      std::memcpy(dst + 8, &pts[p].z, sizeof(float));
+      dst[12] = pts[p].id;
+      dst[13] = 0;
+      dst[14] = 0;
+      dst[15] = 0;
+    }
+    sonar_cloud_pub_->publish(cloud);
+  }
 }
 
 /* send the packet, then receive and parse an SIP */
