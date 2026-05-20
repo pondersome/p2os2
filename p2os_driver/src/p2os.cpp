@@ -179,6 +179,7 @@ P2OSNode::P2OSNode(const std::string & node_name)
   pose_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("pose", 10);
   batt_pub_ = this->create_publisher<p2os_msgs::msg::BatteryState>("battery_state", 10);
   mstate_pub_ = this->create_publisher<p2os_msgs::msg::MotorState>("motor_state", 10);
+  stall_pub_ = this->create_publisher<p2os_msgs::msg::MotorStall>("motor_stall", 10);
   grip_state_pub_ = this->create_publisher<p2os_msgs::msg::GripperState>("gripper_state", 10);
   ptz_state_pub_ = this->create_publisher<p2os_msgs::msg::PTZState>("ptz_state", 10);
   sonar_pub_ = this->create_publisher<p2os_msgs::msg::SonarArray>("sonar", 10);
@@ -1066,6 +1067,9 @@ P2OSNode::StandardSIPPutData(rclcpp::Time ts)
   p2os_data.batt.header.stamp = ts;
   batt_pub_->publish(p2os_data.batt);
   mstate_pub_->publish(p2os_data.motors);
+
+  p2os_data.stall.header.stamp = ts;
+  stall_pub_->publish(p2os_data.stall);
 
   // put sonar data. use_sonar_ gates all three representations — when
   // it's false the firmware isn't pinging anyway, so publishing stale

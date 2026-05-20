@@ -109,6 +109,12 @@ void SIP::FillStandard(ros_p2os_data_t * data)
   // not tell us whether they have been enabled
   // data->motors.state = (status & 0x01);
   data->motors.state = motors_enabled & 0x01;
+
+  // per-wheel stall flags — SIP bit 0 of each bumper byte, independent
+  // of the bumper segments. Firmware sets these on a commanded-vs-actual
+  // wheel-velocity discrepancy (motor stall / H-bridge cutout).
+  data->stall.left = lwstall;
+  data->stall.right = rwstall;
   /*
   ///////////////////////////////////////////////////////////////
   // compass

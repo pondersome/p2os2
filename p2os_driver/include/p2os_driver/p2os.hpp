@@ -32,6 +32,7 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <p2os_msgs/msg/motor_state.hpp>
+#include <p2os_msgs/msg/motor_stall.hpp>
 #include <p2os_msgs/msg/gripper_state.hpp>
 #include <p2os_msgs/msg/sonar_array.hpp>
 #include <p2os_msgs/msg/dio.hpp>
@@ -63,6 +64,8 @@ typedef struct ros_p2os_data
   //p2os_msgs::msg::BatteryState batt;
   //! Provides the state of the motors (enabled or disabled)
   p2os_msgs::msg::MotorState motors;
+  //! Per-wheel stall flags from the SIP
+  p2os_msgs::msg::MotorStall stall;
   //! Provides the state of the gripper
   p2os_msgs::msg::GripperState gripper;
   //! Container for sonar data
@@ -179,6 +182,7 @@ protected:
   */
   rclcpp::Publisher<p2os_msgs::msg::BatteryState>::SharedPtr batt_pub_;
   rclcpp::Publisher<p2os_msgs::msg::MotorState>::SharedPtr mstate_pub_;
+  rclcpp::Publisher<p2os_msgs::msg::MotorStall>::SharedPtr stall_pub_;
   rclcpp::Publisher<p2os_msgs::msg::GripperState>::SharedPtr grip_state_pub_;
   rclcpp::Publisher<p2os_msgs::msg::PTZState>::SharedPtr ptz_state_pub_;
   rclcpp::Publisher<p2os_msgs::msg::SonarArray>::SharedPtr sonar_pub_;
