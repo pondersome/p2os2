@@ -115,6 +115,12 @@ void SIP::FillStandard(ros_p2os_data_t * data)
   // wheel-velocity discrepancy (motor stall / H-bridge cutout).
   data->stall.left = lwstall;
   data->stall.right = rwstall;
+  // per-wheel measured velocity (SIP LVEL/RVEL, mm/s -> m/s). The
+  // /pose twist above only carries the averaged linear.x; these expose
+  // each wheel individually so an asymmetric drive fault can be
+  // localized open-loop, independent of the Nav2 controller.
+  data->stall.left_vel = lvel / 1e3;
+  data->stall.right_vel = rvel / 1e3;
   /*
   ///////////////////////////////////////////////////////////////
   // compass
