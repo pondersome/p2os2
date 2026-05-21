@@ -273,6 +273,28 @@ P2OSNode::P2OSNode(const std::string & node_name)
     cmd_vel_timeout_s_ > 0.0 ? "enabled" : "disabled",
     cmd_vel_timeout_s_);
 
+  // Tank-drive path (per-wheel VEL2) — bench diagnostics only. Gated
+  // behind enable_wheel_cmd (default false) so it does not even exist
+  // as a topic in normal field operation: a 25 kg robot should have
+  // exactly one motion command path unless deliberately bench-testing.
+  this->declare_parameter<bool>("enable_wheel_cmd", false);
+  this->get_parameter("enable_wheel_cmd", enable_wheel_cmd_);
+  this->declare_parameter<double>("wheel_cmd_timeout", 0.5);
+  this->get_parameter("wheel_cmd_timeout", wheel_cmd_timeout_s_);
+  wheel_cmd_mode_ = false;
+  wheelcmd_dirty_ = false;
+  wheelcmd_watchdog_triggered_ = false;
+  last_wheelcmd_time_ = this->now();
+  if (enable_wheel_cmd_) {
+    wheelcmd_sub_ = this->create_subscription<p2os_msgs::msg::WheelCmd>(
+      "wheel_cmd", 1,
+      std::bind(&P2OSNode::wheelcmd_callback, this, std::placeholders::_1));
+    RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"),
+      "enable_wheel_cmd=true: subscribed to wheel_cmd (tank drive, "
+      "VEL2). The first WheelCmd latches wheel-cmd mode and cmd_vel is "
+      "then ignored until restart. Bench-diagnostic use only.");
+  }
+
   // add diagnostic functions
   //diagnostic_.add("Motor Stall", this, &P2OSNode::check_stall);
   //diagnostic_.add("Battery Voltage", this, &P2OSNode::check_voltage);
@@ -370,8 +392,79 @@ void P2OSNode::cmdvel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
   }
 }
 
+void P2OSNode::wheelcmd_callback(const p2os_msgs::msg::WheelCmd::SharedPtr msg)
+{
+  last_wheelcmd_time_ = this->now();
+  wheelcmd_watchdog_triggered_ = false;
+  if (!wheel_cmd_mode_) {
+    wheel_cmd_mode_ = true;
+    RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"),
+      "wheel-cmd mode latched: motion is now per-wheel VEL2 (tank "
+      "drive); cmd_vel is ignored until this node restarts");
+  }
+  wheelcmd_ = *msg;
+  wheelcmd_dirty_ = true;
+}
+
+void P2OSNode::SendWheelCmd()
+{
+  wheelcmd_dirty_ = false;
+
+  // Each wheel: ground velocity m/s -> mm/s, clamped to motor_max_speed,
+  // then expressed in VEL2 units of Vel2Divisor (20) mm/s as a signed
+  // byte. Confirmed encoding (ARCOS/P2OS): the VEL2 2-byte argument is
+  // low byte = right wheel, high byte = left wheel.
+  const int div = PlayerRobotParams[param_idx].Vel2Divisor;
+  auto wheel_byte = [&](double v_mps) -> int {
+    int v = static_cast<int>(rint(v_mps * 1e3));
+    if (v >  motor_max_speed) {v =  motor_max_speed;}
+    if (v < -motor_max_speed) {v = -motor_max_speed;}
+    int b = (div > 0) ? (v / div) : v;
+    if (b >  127) {b =  127;}
+    if (b < -128) {b = -128;}
+    return b;
+  };
+  const int rb = wheel_byte(wheelcmd_.right);
+  const int lb = wheel_byte(wheelcmd_.left);
+
+  unsigned char wc[4];
+  wc[0] = VEL2;
+  wc[1] = ARGINT;
+  wc[2] = static_cast<unsigned char>(static_cast<signed char>(rb));
+  wc[3] = static_cast<unsigned char>(static_cast<signed char>(lb));
+  P2OSPacket pkt;
+  pkt.Build(wc, 4);
+  SendReceive(&pkt);
+  RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"),
+    "VEL2 cmd L=%.2f R=%.2f m/s -> bytes L=%d R=%d",
+    wheelcmd_.left, wheelcmd_.right, lb, rb);
+}
+
 void P2OSNode::check_and_set_vel()
 {
+  // Tank-drive mode: once a WheelCmd has latched wheel_cmd_mode_, all
+  // motion comes from wheel_cmd via VEL2; the cmd_vel path below is
+  // skipped entirely so the two cannot fight.
+  if (wheel_cmd_mode_) {
+    if (wheel_cmd_timeout_s_ > 0.0 && !wheelcmd_watchdog_triggered_) {
+      const double silence =
+        (this->now() - last_wheelcmd_time_).seconds();
+      if (silence > wheel_cmd_timeout_s_ &&
+        (fabs(wheelcmd_.left) > 0.005 || fabs(wheelcmd_.right) > 0.005))
+      {
+        RCLCPP_WARN(rclcpp::get_logger("P2OsDriver"),
+          "wheel_cmd watchdog: no messages for %.3fs, zeroing wheels",
+          silence);
+        wheelcmd_.left = 0.0;
+        wheelcmd_.right = 0.0;
+        wheelcmd_dirty_ = true;
+        wheelcmd_watchdog_triggered_ = true;
+      }
+    }
+    if (wheelcmd_dirty_) {SendWheelCmd();}
+    return;
+  }
+
   // Silence watchdog: if cmd_vel has stopped arriving and the last
   // commanded velocity is still non-zero, force zero to the wheels.
   // Single-shot per silence interval (cleared on next incoming cmd_vel).

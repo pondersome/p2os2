@@ -15,6 +15,7 @@ rosidl_generate_interfaces(
         msg/TCMState.msg
         msg/MotorState.msg
         msg/MotorStall.msg
+        msg/WheelCmd.msg
         msg/LiftState.msg
         msg/DIO.msg
         msg/PTZState.msg

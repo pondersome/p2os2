@@ -33,6 +33,7 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <p2os_msgs/msg/motor_state.hpp>
 #include <p2os_msgs/msg/motor_stall.hpp>
+#include <p2os_msgs/msg/wheel_cmd.hpp>
 #include <p2os_msgs/msg/gripper_state.hpp>
 #include <p2os_msgs/msg/sonar_array.hpp>
 #include <p2os_msgs/msg/dio.hpp>
@@ -150,6 +151,8 @@ public:
   void check_and_set_vel();
   //void cmdvel_cb(const geometry_msgs::msg::Twist::ConstSharedPtr &);
   void cmdvel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
+  void wheelcmd_callback(const p2os_msgs::msg::WheelCmd::SharedPtr msg);
+  void SendWheelCmd();
 
   void check_and_set_motor_state();
   //void cmdmotor_state(const p2os_msgs::MotorStateConstPtr &);
@@ -227,6 +230,7 @@ protected:
   double sonar_z_offset_m_;
 
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmdvel_sub_;
+  rclcpp::Subscription<p2os_msgs::msg::WheelCmd>::SharedPtr wheelcmd_sub_;
   rclcpp::Subscription<p2os_msgs::msg::MotorState>::SharedPtr cmdmstate_sub_;
   rclcpp::Subscription<p2os_msgs::msg::GripperState>::SharedPtr gripper_sub_;
   rclcpp::Subscription<p2os_msgs::msg::PTZState>::SharedPtr ptz_cmd_sub_;
@@ -242,6 +246,20 @@ protected:
   double cmd_vel_timeout_s_;
   rclcpp::Time last_cmdvel_time_;
   bool cmdvel_watchdog_triggered_;
+
+  //! Tank-drive (per-wheel VEL2) path — bench diagnostics only. Off
+  //! unless `enable_wheel_cmd` is true, in which case the driver
+  //! subscribes to `wheel_cmd`. The first WheelCmd latches
+  //! wheel_cmd_mode_: from then on the motion send uses VEL2 and
+  //! `cmd_vel` is ignored, until the node restarts. Same silence-
+  //! watchdog idea as cmd_vel (wheel_cmd_timeout_s_).
+  bool enable_wheel_cmd_;
+  bool wheel_cmd_mode_;
+  bool wheelcmd_dirty_;
+  bool wheelcmd_watchdog_triggered_;
+  double wheel_cmd_timeout_s_;
+  rclcpp::Time last_wheelcmd_time_;
+  p2os_msgs::msg::WheelCmd wheelcmd_;
 
   SIP * sippacket;
   std::string psos_serial_port;
