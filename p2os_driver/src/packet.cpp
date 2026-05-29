@@ -128,7 +128,17 @@ int P2OSPacket::Receive(int fd, int timeout_ms)
         return 1;
       }
       if (cnt == 0) {
-        continue;
+        // 0-byte read on a blocking serial fd = EOF = device went away
+        // (USB drop, ARCOS power loss, kernel cdev teardown). Without
+        // this check the loop would hot-spin forever on EOF, which is
+        // exactly the 2026-05-28 chassis-B fault: FTDI dropped USB,
+        // driver wedged at 100% CPU, ARCOS chassis watchdog handled
+        // motor stop, but our process never noticed and never let
+        // systemd / outer reconnect logic recover. Surfacing this as
+        // an error gets us to the reconnect path in p2osnode.cpp main.
+        RCLCPP_ERROR(logger_,
+          "Receive(): EOF on serial fd (header read) — device disappeared");
+        return 1;
       }
 
       if (prefix[0] == 0xFA && prefix[1] == 0xFB) {
@@ -166,6 +176,15 @@ int P2OSPacket::Receive(int fd, int timeout_ms)
         if ((errno == EAGAIN || errno == EWOULDBLOCK) && timeout_ms > 0) { continue; }
         RCLCPP_ERROR(logger_,
           "Error reading packet body from robot connection: %s", strerror(errno));
+        return 1;
+      }
+      if (n == 0) {
+        // EOF mid-body — same root cause as the header-read EOF check
+        // above; surface as an error so the outer reconnect loop runs
+        // rather than spin-locking on a dead fd.
+        RCLCPP_ERROR(logger_,
+          "Receive(): EOF on serial fd (body read, %d/%d bytes) — device disappeared",
+          cnt, prefix[2]);
         return 1;
       }
       cnt += n;

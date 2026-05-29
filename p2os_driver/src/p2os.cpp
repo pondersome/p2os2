@@ -561,8 +561,16 @@ int P2OSNode::Setup()
       }
     }
   }
-  sippacket = NULL;
-  lastPulseTime = 0.0;
+  // Only clear sippacket on first connect; on reconnect, preserve it
+  // so odometry offsets carry over (assuming chassis power was
+  // maintained — encoder counters then continue from where they were,
+  // and SIP's diff logic produces a small delta instead of a jump).
+  // If the chassis HAD a power cycle during the disconnect window,
+  // encoders did reset and there'll be a position jump on first SIP;
+  // that's acceptable — the alternative is zeroing every reconnect.
+  if (sippacket == NULL) {
+    lastPulseTime = 0.0;
+  }
 
   struct termios term;
   unsigned char command;
@@ -1039,6 +1047,18 @@ int P2OSNode::Setup()
   ptz_.setup();
 
   return 0;
+}
+
+void P2OSNode::CloseSerial()
+{
+  // Drop the fd without attempting STOP/CLOSE writes. The reconnect
+  // path uses this when Receive has already reported EOF — the kernel
+  // cdev is gone, write()s will silently fail. Leave sippacket alive
+  // so Setup() can preserve odometry on the next connect.
+  if (this->psos_fd != -1) {
+    close(this->psos_fd);
+    this->psos_fd = -1;
+  }
 }
 
 int P2OSNode::Shutdown()

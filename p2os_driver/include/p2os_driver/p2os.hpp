@@ -103,9 +103,16 @@ public:
 
 public:
   //! Setup the robot for use. Communicates with the robot directly.
+  //! Safe to call again after CloseSerial() to re-establish a dropped
+  //! connection — preserves existing sippacket so odometry continues.
   int Setup();
   //! Prepare for shutdown.
   int Shutdown();
+  //! Drop the serial fd without sending STOP/CLOSE. Used by the main
+  //! loop's reconnect path when the fd is already dead (no point trying
+  //! to send bytes into a vanished USB device). Distinct from Shutdown()
+  //! which is the clean-exit path.
+  void CloseSerial();
   rclcpp::Time get_current_time();
 
   int SendReceive(P2OSPacket * pkt, bool publish_data = true);
@@ -261,13 +268,19 @@ protected:
   rclcpp::Time last_wheelcmd_time_;
   p2os_msgs::msg::WheelCmd wheelcmd_;
 
-  SIP * sippacket;
+  // Default-initialized to nullptr / -1 so the reconnect-aware path in
+  // Setup() can distinguish "first connect" (sippacket == nullptr →
+  // allocate fresh, reset offsets) from "reconnect" (preserve existing
+  // odometry state). Pre-2026-05-29 the code relied on Setup() itself
+  // to set sippacket = NULL on every entry, which destroyed odometry
+  // continuity across recovery.
+  SIP * sippacket = nullptr;
   std::string psos_serial_port;
   std::string psos_tcp_host;
   std::string odom_frame_id;
   std::string base_link_frame_id;
   bool publish_tf_;
-  int psos_fd;
+  int psos_fd = -1;
   bool psos_use_tcp;
   int psos_tcp_port;
   bool vel_dirty, motor_dirty;
